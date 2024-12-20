@@ -1,29 +1,49 @@
 Photoluminescence (PL) Analysis Tool
 
-A Python-based GUI application for analyzing photoluminescence measurements. This tool supports both continuous and non-continuous measurement data, providing comprehensive visualization of spectra, instability gradients, and halide segregation. Ideal for researchers in material science, it offers interactive data selection, plot customization, and metadata display.
+PL Analysis Tool is a Python-based GUI application for analyzing photoluminescence measurements. This tool supports both continuous and non-continuous measurement data, providing comprehensive visualization of spectra, instability gradients, and halide segregation. It offers interactive data selection, plot customization, and metadata display.
 
-This program requires the following Python libraries to run. You can install them using pip:
+Features:
+Load photoluminescence measurement data from text files.
+Visualize raw spectra, instability gradients, and halide segregation.
+Supports both linear and logarithmic plots.
+Save plots in PNG format.
+Interactive GUI built with Tkinter.
 
-Required Libraries:
-matplotlib - for plotting graphs and visualizations
-numpy - for numerical computations
-scipy - for scientific and technical computing
-pandas - for data manipulation and analysis
-seaborn - for statistical data visualization
+Requirements:
+To run the PL Analysis Tool, you need to have Python 3.8 or later installed. Additionally, the following Python libraries are required:
+
+pandas
+matplotlib
+numpy
+Pillow (PIL)
+tkinter (usually comes with Python installation)
+
 
 Installation:
+Install Python 3.8 or later
 
-Clone the repository to your local machine:
-git clone <repository_url>
+You can download Python from the official website: Python.org
 
-Navigate to the project directory:
-cd <project_directory>
+Install required libraries
 
-Install the required libraries by running the following commands:
-pip install matplotlib
-pip install numpy
-pip install scipy
-pip install pandas
-pip install seaborn
+Open a terminal or command prompt and run the following commands to install the necessary libraries:
 
-After installing the required libraries, the program should be ready to run!
+pip install pandas matplotlib numpy Pillow
+Note: tkinter is usually included with your Python installation. If it's not, you may need to install it separately depending on your operating system.
+
+Usage:
+Clone the repository:
+
+bash
+git clone https://github.com/Failistig/PL_Analysis_Tool.git
+cd PL_Analysis_Tool
+Run the application
+
+python PL_Peak_Characterization.py
+
+Using the GUI:
+Click on "Load File" to select a text file containing photoluminescence measurement data.
+Select the types of plots you want to visualize (Spectra, Instability Gradient, Halide Segregation, and their logarithmic counterparts).
+Click on "Plot All" to generate the plots.
+Use the "Save Plots" button to save the current plots as PNG files.
+Click on "Update Raw Plot" to refresh the raw data plot based on selected time intervals.
