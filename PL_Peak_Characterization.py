@@ -27,27 +27,28 @@ class PLAnalysisApp:
         self.relative_times = None
 
         self.plot_spectra_var = IntVar(value=1)
-        self.plot_instability_var = IntVar(value=1)
-        self.plot_segregation_var = IntVar(value=1)
+        self.plot_absolute_gradient_var = IntVar(value=1)
+        self.plot_relative_change_var = IntVar(value=1)
         self.plot_log_spectra_var = IntVar(value=1)
-        self.plot_log_instability_var = IntVar(value=1)
-        self.plot_log_segregation_var = IntVar(value=1)
+        self.plot_log_absolute_gradient_var = IntVar(value=1)
+        self.plot_log_relative_change_var = IntVar(value=1)
+        self.show_legend_var = IntVar(value=1)
 
         # Save options
         self.save_raw_var = IntVar(value=1)
-        self.save_instability_var = IntVar(value=1)
-        self.save_segregation_var = IntVar(value=1)
+        self.save_absolute_gradient_var = IntVar(value=1)
+        self.save_relative_change_var = IntVar(value=1)
         self.save_log_spectra_var = IntVar(value=1)
-        self.save_log_instability_var = IntVar(value=1)
-        self.save_log_segregation_var = IntVar(value=1)
+        self.save_log_absolute_gradient_var = IntVar(value=1)
+        self.save_log_relative_change_var = IntVar(value=1)
         self.save_combined_var = IntVar(value=1)
         self.save_names = {
             "Raw Data": StringVar(value="Raw_Data"),
-            "Instability Gradient": StringVar(value="Instability_Gradient"),
-            "Halide Segregation": StringVar(value="Halide_Segregation"),
+            "Absolute Gradient": StringVar(value="Absolute_Gradient"),
+            "Relative Change": StringVar(value="Relative_Change"),
             "Log Spectra": StringVar(value="Log_Spectra"),
-            "Log Instability Gradient": StringVar(value="Log_Instability_Gradient"),
-            "Log Halide Segregation": StringVar(value="Log_Halide_Segregation"),
+            "Log Absolute Gradient": StringVar(value="Log_Absolute_Gradient"),
+            "Log Relative Change": StringVar(value="Log_Relative_Change"),
             "Combined": StringVar(value="Combined_Plots"),
         }
 
@@ -85,16 +86,18 @@ class PLAnalysisApp:
         # Plot Selection
         Label(self.master, text="Select Plots:").grid(row=3, column=0, pady=5, sticky="w")
         Checkbutton(self.master, text="Spectra", variable=self.plot_spectra_var).grid(row=4, column=0, sticky="w")
-        Checkbutton(self.master, text="Instability Gradient", variable=self.plot_instability_var).grid(row=5, column=0, sticky="w")
-        Checkbutton(self.master, text="Halide Segregation", variable=self.plot_segregation_var).grid(row=6, column=0, sticky="w")
+        Checkbutton(self.master, text="Absolute Gradient", variable=self.plot_absolute_gradient_var).grid(row=5, column=0, sticky="w")
+        Checkbutton(self.master, text="Relative Change", variable=self.plot_relative_change_var).grid(row=6, column=0, sticky="w")
         Checkbutton(self.master, text="Log Spectra", variable=self.plot_log_spectra_var).grid(row=4, column=1, sticky="w")
-        Checkbutton(self.master, text="Log Instability Gradient", variable=self.plot_log_instability_var).grid(row=5, column=1, sticky="w")
-        Checkbutton(self.master, text="Log Halide Segregation", variable=self.plot_log_segregation_var).grid(row=6, column=1, sticky="w")
+        Checkbutton(self.master, text="Log Absolute Gradient", variable=self.plot_log_absolute_gradient_var).grid(row=5, column=1, sticky="w")
+        Checkbutton(self.master, text="Log Relative Change", variable=self.plot_log_relative_change_var).grid(row=6, column=1, sticky="w")
 
         # Info Buttons
-        Button(self.master, text="Info: Spectra", width=15, anchor="w", command=lambda: self.show_info("Spectra")).grid(row=4, column=2, sticky="w")
-        Button(self.master, text="Info: Absolute Gradient", width=15, anchor="w", command=lambda: self.show_info("Absolute Gradient")).grid(row=5, column=2, sticky="w")
-        Button(self.master, text="Info: Relative Change", width=15, anchor="w", command=lambda: self.show_info("Relative Change")).grid(row=6, column=2, sticky="w")
+        Button(self.master, text="Info: Spectra", width=20, anchor="w", command=lambda: self.show_info("Spectra")).grid(row=4, column=2, sticky="w")
+        Button(self.master, text="Info: Absolute Gradient", width=20, anchor="w", command=lambda: self.show_info("Absolute Gradient")).grid(row=5, column=2, sticky="w")
+        Button(self.master, text="Info: Relative Change", width=20, anchor="w", command=lambda: self.show_info("Relative Change")).grid(row=6, column=2, sticky="w")
+        # Legend Toggle
+        Checkbutton(self.master, text="Show Legend", variable=self.show_legend_var).grid(row=7, column=0, sticky="w")
 
         # Raw Data Selection
         self.time_check_frame = Frame(self.master)
@@ -170,11 +173,11 @@ class PLAnalysisApp:
 
         # Checkboxes for save options
         Checkbutton(save_window, text="Raw Data", variable=self.save_raw_var).grid(row=1, column=0, sticky="w")
-        Checkbutton(save_window, text="Instability Gradient", variable=self.save_instability_var).grid(row=2, column=0, sticky="w")
-        Checkbutton(save_window, text="Halide Segregation", variable=self.save_segregation_var).grid(row=3, column=0, sticky="w")
+        Checkbutton(save_window, text="Absolute Gradient", variable=self.save_absolute_gradient_var).grid(row=2, column=0, sticky="w")
+        Checkbutton(save_window, text="Relative Change", variable=self.save_relative_change_var).grid(row=3, column=0, sticky="w")
         Checkbutton(save_window, text="Log Spectra", variable=self.save_log_spectra_var).grid(row=4, column=0, sticky="w")
-        Checkbutton(save_window, text="Log Instability Gradient", variable=self.save_log_instability_var).grid(row=5, column=0, sticky="w")
-        Checkbutton(save_window, text="Log Halide Segregation", variable=self.save_log_segregation_var).grid(row=6, column=0, sticky="w")
+        Checkbutton(save_window, text="Log Absolute Gradient", variable=self.save_log_absolute_gradient_var).grid(row=5, column=0, sticky="w")
+        Checkbutton(save_window, text="Log Relative Change", variable=self.save_log_relative_change_var).grid(row=6, column=0, sticky="w")
         Checkbutton(save_window, text="Combined Plots", variable=self.save_combined_var).grid(row=7, column=0, sticky="w")
 
         # Entry fields for file names
@@ -192,16 +195,16 @@ class PLAnalysisApp:
 
         if self.save_raw_var.get():
             self.save_plot(self.plot_spectra, save_dir, self.save_names["Raw Data"].get())
-        if self.save_instability_var.get():
-            self.save_plot(self.plot_instability, save_dir, self.save_names["Instability Gradient"].get())
-        if self.save_segregation_var.get():
-            self.save_plot(self.plot_segregation, save_dir, self.save_names["Halide Segregation"].get())
+        if self.save_absolute_gradient_var.get():
+            self.save_plot(self.plot_absolute_gradient, save_dir, self.save_names["Absolute Gradient"].get())
+        if self.save_relative_change_var.get():
+            self.save_plot(self.plot_relative_change, save_dir, self.save_names["Relative Change"].get())
         if self.save_log_spectra_var.get():
             self.save_plot(self.plot_log_spectra, save_dir, self.save_names["Log Spectra"].get())
-        if self.save_log_instability_var.get():
-            self.save_plot(self.plot_log_instability, save_dir, self.save_names["Log Instability Gradient"].get())
-        if self.save_log_segregation_var.get():
-            self.save_plot(self.plot_log_segregation, save_dir, self.save_names["Log Halide Segregation"].get())
+        if self.save_log_absolute_gradient_var.get():
+            self.save_plot(self.plot_log_absolute_gradient, save_dir, self.save_names["Log Absolute Gradient"].get())
+        if self.save_log_relative_change_var.get():
+            self.save_plot(self.plot_log_relative_change, save_dir, self.save_names["Log Relative Change"].get())
         if self.save_combined_var.get():
             self.save_combined_plot(save_dir)
 
@@ -215,11 +218,11 @@ class PLAnalysisApp:
     def save_combined_plot(self, save_dir):
         fig, axes = plt.subplots(2, 3, figsize=(14, 6), constrained_layout=True)
         self.plot_spectra(axes[0, 0])
-        self.plot_instability(axes[0, 1])
-        self.plot_segregation(axes[0, 2])
+        self.plot_absolute_gradient(axes[0, 1])
+        self.plot_relative_change(axes[0, 2])
         self.plot_log_spectra(axes[1, 0])
-        self.plot_log_instability(axes[1, 1])
-        self.plot_log_segregation(axes[1, 2])
+        self.plot_log_absolute_gradient(axes[1, 1])
+        self.plot_log_relative_change(axes[1, 2])
         fig.tight_layout()
         fig.savefig(f"{save_dir}/{self.save_names['Combined'].get()}.png")
         plt.close(fig)
@@ -237,7 +240,7 @@ class PLAnalysisApp:
             ),
             "Absolute Gradient": (
                 "Absolute Intensity Gradient:\n"
-                "This plot represents the instability gradient calculated from the PL spectra. "
+                "This plot represents the absolute gradient calculated from the PL spectra. "
                 "It shows the variation of PL intensity over time. The logarithmic plot shows the same data on a logarithmic scale.\n\n"
                 "It is computed as the numerical gradient of the raw photoluminescence (PL) counts "
                 "along the time axis (row-wise) and measures how the PL intensity changes with respect "
@@ -246,7 +249,7 @@ class PLAnalysisApp:
                 "across all time intervals is calculated. This results in a single average gradient value "
                 "for each wavelength, representing how unstable or variable the PL intensity is over time "
                 "at that wavelength.\n\n"
-                "X-axis: Time (s)\nY-axis: Instability Gradient (a.u.)"
+                "X-axis: Time (s)\nY-axis: Absolute Gradient (a.u.)"
             ),
             "Relative Change": (
                 "Relative Intensity Change:\n"
@@ -256,7 +259,7 @@ class PLAnalysisApp:
                 "The change is normalized by the intensity at the previous time step to obtain a relative metric.\n\n"
                 "The mean of the relative changes is then calculated across all time intervals for each wavelength "
                 "providing an average metric for each wavelength.\n\n"
-                "X-axis: Time (s)\nY-axis: Halide Segregation Intensity (a.u.)"
+                "X-axis: Time (s)\nY-axis: Relative Change Intensity (a.u.)"
             ),
         }
         messagebox.showinfo(f"Info: {plot_type}", info.get(plot_type, "No information available."))
@@ -277,13 +280,13 @@ class PLAnalysisApp:
         else:
             axes[0, 0].axis('off')
 
-        if self.plot_instability_var.get():
-            self.plot_instability(axes[0, 1])
+        if self.plot_absolute_gradient_var.get():
+            self.plot_absolute_gradient(axes[0, 1])
         else:
             axes[0, 1].axis('off')
 
-        if self.plot_segregation_var.get():
-            self.plot_segregation(axes[0, 2])
+        if self.plot_relative_change_var.get():
+            self.plot_relative_change(axes[0, 2])
         else:
             axes[0, 2].axis('off')
 
@@ -292,13 +295,13 @@ class PLAnalysisApp:
         else:
             axes[1, 0].axis('off')
 
-        if self.plot_log_instability_var.get():
-            self.plot_log_instability(axes[1, 1])
+        if self.plot_log_absolute_gradient_var.get():
+            self.plot_log_absolute_gradient(axes[1, 1])
         else:
             axes[1, 1].axis('off')
 
-        if self.plot_log_segregation_var.get():
-            self.plot_log_segregation(axes[1, 2])
+        if self.plot_log_relative_change_var.get():
+            self.plot_log_relative_change(axes[1, 2])
         else:
             axes[1, 2].axis('off')
 
@@ -312,65 +315,71 @@ class PLAnalysisApp:
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
         for idx, i in enumerate(selected_indices):
             ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=self.relative_times[i])
-        ax.legend()
+        if self.show_legend_var.get():
+            ax.legend()
         ax.set_xlabel("Wavelength (nm)")
         ax.set_ylabel("Counts")
         ax.set_title("Raw PL Spectra")
 
-    def plot_instability(self, ax):
+    def plot_absolute_gradient(self, ax):
         gradient = np.gradient(self.raw_counts, axis=0)
         mean_gradient = np.mean(np.abs(gradient), axis=1)
-        ax.plot(self.wavelength, mean_gradient, color="blue", label="Instability Gradient")
-        ax.set_title("Instability Gradient")
+        ax.plot(self.wavelength, mean_gradient, color="blue", label="Absolute Gradient")
+        ax.set_title("Absolute Gradient")
         ax.set_xlabel("Wavelength (nm)")
         ax.set_ylabel("Gradient Value")
-        ax.legend()
+        if self.show_legend_var.get():
+            ax.legend()
 
-    def plot_segregation(self, ax):
+    def plot_relative_change(self, ax):
         shape_change = np.abs(np.diff(self.raw_counts, axis=1))
         epsilon = 1e-8
         quotient = shape_change / (np.abs(self.raw_counts[:, :-1]) + epsilon)
         average_quotient = np.mean(quotient, axis=1)
         ax.plot(self.wavelength[:-1], average_quotient[:len(self.wavelength) - 1], color="green",
-                label="Segregation Metric")
-        ax.set_title("Halide Segregation")
+                label="Relative Change")
+        ax.set_title("Relative Change")
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Segregation Value")
-        ax.legend()
+        ax.set_ylabel("Relative Change Value")
+        if self.show_legend_var.get():
+            ax.legend()
 
     def plot_log_spectra(self, ax):
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
         for idx, i in enumerate(selected_indices):
             ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=self.relative_times[i])
-        ax.legend()
+        if self.show_legend_var.get():
+            ax.legend()
         ax.set_yscale('log')
         ax.set_xlabel("Wavelength (nm)")
         ax.set_ylabel("Counts")
         ax.set_title("Raw PL Spectra (log)")
 
-    def plot_log_instability(self, ax):
+    def plot_log_absolute_gradient(self, ax):
         gradient = np.gradient(self.raw_counts, axis=0)
         mean_gradient = np.mean(np.abs(gradient), axis=1)
-        ax.plot(self.wavelength, mean_gradient, color="blue", label="Instability Gradient")
-        ax.set_title("Instability Gradient")
+        ax.plot(self.wavelength, mean_gradient, color="blue", label="Absolute Gradient")
+        ax.set_title("Absolute Gradient")
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Gradient Value")
+        ax.set_ylabel("Gradient Value (log)")
         ax.set_yscale('log')
-        ax.legend()
+        if self.show_legend_var.get():
+            ax.legend()
 
-    def plot_log_segregation(self, ax):
+    def plot_log_relative_change(self, ax):
         shape_change = np.abs(np.diff(self.raw_counts, axis=1))
         epsilon = 1e-8
         quotient = shape_change / (np.abs(self.raw_counts[:, :-1]) + epsilon)
         average_quotient = np.mean(quotient, axis=1)
         ax.plot(self.wavelength[:-1], average_quotient[:len(self.wavelength) - 1], color="green",
-                label="Segregation Metric")
-        ax.set_title("Halide Segregation")
+                label="Relative Change")
+        ax.set_title("Relative Change")
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Segregation Value")
+        ax.set_ylabel("Relative Change Value (log)")
         ax.set_yscale('log')
-        ax.legend()
+        if self.show_legend_var.get():
+            ax.legend()
 
     def update_raw_plot(self):
         self.plot_in_window()
