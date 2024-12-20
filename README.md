@@ -2,6 +2,7 @@ Photoluminescence (PL) Analysis Tool
 
 PL Analysis Tool is a Python-based GUI application for analyzing photoluminescence measurements. This tool supports both continuous and non-continuous measurement data, providing comprehensive visualization of spectra, instability gradients, and halide segregation. It offers interactive data selection, plot customization, and metadata display.
 
+
 Features:
 
 Load photoluminescence measurement data from text files.
@@ -9,6 +10,7 @@ Visualize raw spectra, instability gradients, and halide segregation.
 Supports both linear and logarithmic plots.
 Save plots in PNG format.
 Interactive GUI built with Tkinter.
+
 
 Requirements:
 
@@ -25,7 +27,7 @@ Pillow (PIL)
 tkinter (usually comes with Python installation)
 
 
-Installation:
+Dependecies:
 
 Install Python 3.8 or later. You can download Python from the official website: Python.org
 
@@ -37,7 +39,8 @@ pip install pandas matplotlib numpy Pillow
 
 Note: tkinter is usually included with your Python installation. If it's not, you may need to install it separately depending on your operating system.
 
-Usage:
+
+Installation:
 
 Clone the repository:
 
@@ -48,6 +51,7 @@ git clone https://github.com/Failistig/PL_Analysis_Tool.git
 cd PL_Analysis_Tool
 
 Run the application: python PL_Peak_Characterization.py
+
 
 Using the GUI:
 
