@@ -1,10 +1,11 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel
+from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel, PhotoImage
 from tkinter.simpledialog import askstring
-from tkinter import StringVar
+from tkinter import StringVar, messagebox
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from PIL import Image, ImageTk
 from datetime import datetime
 
 
@@ -14,6 +15,9 @@ class PLAnalysisApp:
         self.master.title("PL Analysis Tool")
         self.master.geometry("1200x700")
         self.master.grid_columnconfigure(1, weight=1)  # Center column expands
+
+        # Bind the window close event to a custom method
+        self.master.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Variables
         self.file_path = None
@@ -26,6 +30,9 @@ class PLAnalysisApp:
         self.plot_spectra_var = IntVar(value=1)
         self.plot_instability_var = IntVar(value=1)
         self.plot_segregation_var = IntVar(value=1)
+        self.plot_log_spectra_var = IntVar(value=1)
+        self.plot_log_instability_var = IntVar(value=1)
+        self.plot_log_segregation_var = IntVar(value=1)
 
         # Save options
         self.save_raw_var = IntVar(value=1)
@@ -40,11 +47,26 @@ class PLAnalysisApp:
         }
 
         self.time_checkboxes = []
+        self.logo_image = None  # Placeholder for the logo
+
         self.setup_gui()
+
+    def on_close(self):
+        """Ask for confirmation before closing the window."""
+        response = messagebox.askyesno(
+            "Confirm Exit",
+            "Are you sure you want to close? Any unsaved plots will be lost."
+        )
+        if response:  # If the user presses "Yes"
+            self.master.destroy()  # Close the window
+        # If the user presses "No", do nothing and keep the window open.
 
     def setup_gui(self):
         # Title
         Label(self.master, text="PL Analysis Tool", font=("Arial", 16)).grid(row=0, column=0, columnspan=3, pady=10)
+
+        # Load Logo in Top-Right Corner
+        self.load_logo("./hzb_logo.jpg")
 
         # File Load Section
         Button(self.master, text="Load File", width=15, command=self.load_file).grid(row=1, column=0, padx=10, pady=5, sticky="w")
@@ -74,6 +96,18 @@ class PLAnalysisApp:
         self.time_check_frame = Frame(self.master)
         self.time_check_frame.grid(row=8, column=0, columnspan=3, pady=5)
         Button(self.master, text="Update Raw Plot", width=15, command=self.update_raw_plot).grid(row=9, column=1, pady=5)
+
+    def load_logo(self, file_path):
+        """Loads and places the logo image in the top-right corner."""
+        try:
+            image = Image.open(file_path)
+            image = image.resize((300, 100), Image.Resampling.LANCZOS)  # Resize the logo to 2x size
+            self.logo_image = ImageTk.PhotoImage(image)
+
+            # Display the logo
+            Label(self.master, image=self.logo_image).grid(row=0, column=2, sticky="ne", padx=10, pady=10)
+        except Exception as e:
+            print(f"Error loading logo: {e}")
 
     def load_file(self):
         self.file_path = filedialog.askopenfilename(title="Select Data File", filetypes=[("Text Files", "*.txt")])
@@ -179,40 +213,40 @@ class PLAnalysisApp:
                 "of wavelength for different time intervals.\n\n"
                 "The raw data is taken from the PL measurements, where each curve corresponds "
                 "to a specific time interval.\n\n"
-                "X-axis: Wavelength (nm)\nY-axis: Intensity (counts)."
+                "X-axis: Wavelength (nm)\nY-axis: Intensity (a.u.)"
             ),
             "Instability": (
                 "Instability Gradient:\n"
-                "The instability gradient is calculated using the gradient (rate of change) "
-                "of the PL signal intensity over time for each wavelength.\n\n"
-                "This highlights how unstable or dynamic the PL signal is across wavelengths "
-                "over the measured time intervals.\n\n"
-                "X-axis: Wavelength (nm)\nY-axis: Mean Absolute Gradient."
+                "This plot represents the instability gradient calculated from the PL spectra. "
+                "It shows the variation of PL intensity over time.\n\n"
+                "X-axis: Time (s)\nY-axis: Instability Gradient (a.u.)"
             ),
             "Segregation": (
                 "Halide Segregation:\n"
-                "Halide segregation measures the changes in PL signal intensity between adjacent "
-                "time intervals. It reflects changes in material composition or structure over time.\n\n"
-                "This is calculated as the absolute difference between consecutive PL spectra.\n\n"
-                "X-axis: Wavelength (nm)\nY-axis: Mean Change in Counts."
+                "The halide segregation plot shows the change in the PL intensity that is associated "
+                "with halide segregation in the material.\n\n"
+                "X-axis: Time (s)\nY-axis: Halide Segregation Intensity (a.u.)"
             ),
         }
-
-        top = Toplevel(self.master)
-        top.title(f"{plot_type} Information")
-        Label(top, text=info.get(plot_type, "No information available."), wraplength=500, justify="left").pack(padx=20, pady=20)
+        messagebox.showinfo(f"Info: {plot_type}", info.get(plot_type, "No information available."))
 
     def plot_in_window(self):
         for widget in self.plot_frame.winfo_children():
             widget.destroy()
 
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        fig, axes = plt.subplots(2, 3, figsize=(18, 7), constrained_layout=True)
         if self.plot_spectra_var.get():
-            self.plot_spectra(axes[0])
+            self.plot_spectra(axes[0, 0])
         if self.plot_instability_var.get():
-            self.plot_instability(axes[1])
+            self.plot_instability(axes[0, 1])
         if self.plot_segregation_var.get():
-            self.plot_segregation(axes[2])
+            self.plot_segregation(axes[0, 2])
+        if self.plot_log_spectra_var.get():
+            self.plot_log_spectra(axes[1, 0])
+        if self.plot_log_instability_var.get():
+            self.plot_log_instability(axes[1, 1])
+        if self.plot_log_segregation_var.get():
+            self.plot_log_segregation(axes[1, 2])
 
         canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
         toolbar = NavigationToolbar2Tk(canvas, self.plot_frame)
@@ -225,23 +259,67 @@ class PLAnalysisApp:
         for idx, i in enumerate(selected_indices):
             ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=self.relative_times[i])
         ax.legend()
-        ax.set_title("Spectra")
+        ax.set_xlabel("Wavelength (nm)")
+        ax.set_ylabel("Counts")
+        ax.set_title("Raw PL Spectra")
 
     def plot_instability(self, ax):
         gradient = np.gradient(self.raw_counts, axis=0)
         mean_gradient = np.mean(np.abs(gradient), axis=1)
-        ax.plot(self.wavelength, mean_gradient, color="red")
+        ax.plot(self.wavelength, mean_gradient, color="blue", label="Instability Gradient")
         ax.set_title("Instability Gradient")
+        ax.set_xlabel("Wavelength (nm)")
+        ax.set_ylabel("Gradient Value")
+        ax.legend()
 
     def plot_segregation(self, ax):
-        shape_change = np.abs(np.diff(self.raw_counts, axis=0))
-        mean_segregation = np.mean(shape_change, axis=1)
-        ax.plot(self.wavelength[:-1], mean_segregation, color="green")
+        shape_change = np.abs(np.diff(self.raw_counts, axis=1))
+        epsilon = 1e-8
+        quotient = shape_change / (np.abs(self.raw_counts[:, :-1]) + epsilon)
+        average_quotient = np.mean(quotient, axis=1)
+        ax.plot(self.wavelength[:-1], average_quotient[:len(self.wavelength) - 1], color="green",
+                label="Segregation Metric")
         ax.set_title("Halide Segregation")
+        ax.set_xlabel("Wavelength (nm)")
+        ax.set_ylabel("Segregation Value")
+        ax.legend()
+
+    def plot_log_spectra(self, ax):
+        selected_indices = [i for var, i in self.time_checkboxes if var.get()]
+        colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
+        for idx, i in enumerate(selected_indices):
+            ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=self.relative_times[i])
+        ax.legend()
+        ax.set_yscale('log')
+        ax.set_xlabel("Wavelength (nm)")
+        ax.set_ylabel("Counts")
+        ax.set_title("Raw PL Spectra (log)")
+
+    def plot_log_instability(self, ax):
+        gradient = np.gradient(self.raw_counts, axis=0)
+        mean_gradient = np.mean(np.abs(gradient), axis=1)
+        ax.plot(self.wavelength, mean_gradient, color="blue", label="Instability Gradient")
+        ax.set_title("Instability Gradient")
+        ax.set_xlabel("Wavelength (nm)")
+        ax.set_ylabel("Gradient Value")
+        ax.set_yscale('log')
+        ax.legend()
+
+    def plot_log_segregation(self, ax):
+        shape_change = np.abs(np.diff(self.raw_counts, axis=1))
+        epsilon = 1e-8
+        quotient = shape_change / (np.abs(self.raw_counts[:, :-1]) + epsilon)
+        average_quotient = np.mean(quotient, axis=1)
+        ax.plot(self.wavelength[:-1], average_quotient[:len(self.wavelength) - 1], color="green",
+                label="Segregation Metric")
+        ax.set_title("Halide Segregation")
+        ax.set_xlabel("Wavelength (nm)")
+        ax.set_ylabel("Segregation Value")
+        ax.set_yscale('log')
+        ax.legend()
 
     def update_raw_plot(self):
         self.plot_in_window()
-
 
 if __name__ == "__main__":
     root = Tk()
