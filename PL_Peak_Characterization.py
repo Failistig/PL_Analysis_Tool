@@ -8,7 +8,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from PIL import Image, ImageTk
 from datetime import datetime
 
-
 class PLAnalysisApp:
     def __init__(self, master):
         self.master = master
@@ -38,11 +37,17 @@ class PLAnalysisApp:
         self.save_raw_var = IntVar(value=1)
         self.save_instability_var = IntVar(value=1)
         self.save_segregation_var = IntVar(value=1)
+        self.save_log_spectra_var = IntVar(value=1)
+        self.save_log_instability_var = IntVar(value=1)
+        self.save_log_segregation_var = IntVar(value=1)
         self.save_combined_var = IntVar(value=1)
         self.save_names = {
             "Raw Data": StringVar(value="Raw_Data"),
             "Instability Gradient": StringVar(value="Instability_Gradient"),
             "Halide Segregation": StringVar(value="Halide_Segregation"),
+            "Log Spectra": StringVar(value="Log_Spectra"),
+            "Log Instability Gradient": StringVar(value="Log_Instability_Gradient"),
+            "Log Halide Segregation": StringVar(value="Log_Halide_Segregation"),
             "Combined": StringVar(value="Combined_Plots"),
         }
 
@@ -82,20 +87,23 @@ class PLAnalysisApp:
         Checkbutton(self.master, text="Spectra", variable=self.plot_spectra_var).grid(row=4, column=0, sticky="w")
         Checkbutton(self.master, text="Instability Gradient", variable=self.plot_instability_var).grid(row=5, column=0, sticky="w")
         Checkbutton(self.master, text="Halide Segregation", variable=self.plot_segregation_var).grid(row=6, column=0, sticky="w")
+        Checkbutton(self.master, text="Log Spectra", variable=self.plot_log_spectra_var).grid(row=4, column=1, sticky="w")
+        Checkbutton(self.master, text="Log Instability Gradient", variable=self.plot_log_instability_var).grid(row=5, column=1, sticky="w")
+        Checkbutton(self.master, text="Log Halide Segregation", variable=self.plot_log_segregation_var).grid(row=6, column=1, sticky="w")
 
         # Info Buttons
-        Button(self.master, text="Info: Spectra", width=15, command=lambda: self.show_info("Spectra")).grid(row=4, column=1, sticky="w")
-        Button(self.master, text="Info: Instability", width=15, command=lambda: self.show_info("Instability")).grid(row=5, column=1, sticky="w")
-        Button(self.master, text="Info: Segregation", width=15, command=lambda: self.show_info("Segregation")).grid(row=6, column=1, sticky="w")
-
-        # Plot Frame
-        self.plot_frame = Frame(self.master, width=900, height=400, bg="white")
-        self.plot_frame.grid(row=7, column=0, columnspan=3, pady=10)
+        Button(self.master, text="Info: Spectra", width=15, anchor="w", command=lambda: self.show_info("Spectra")).grid(row=4, column=2, sticky="w")
+        Button(self.master, text="Info: Absolute Gradient", width=15, anchor="w", command=lambda: self.show_info("Absolute Gradient")).grid(row=5, column=2, sticky="w")
+        Button(self.master, text="Info: Relative Change", width=15, anchor="w", command=lambda: self.show_info("Relative Change")).grid(row=6, column=2, sticky="w")
 
         # Raw Data Selection
         self.time_check_frame = Frame(self.master)
-        self.time_check_frame.grid(row=8, column=0, columnspan=3, pady=5)
-        Button(self.master, text="Update Raw Plot", width=15, command=self.update_raw_plot).grid(row=9, column=1, pady=5)
+        self.time_check_frame.grid(row=7, column=0, columnspan=3, pady=5)
+        Button(self.master, text="Update Raw Plot", width=15, command=self.update_raw_plot).grid(row=8, column=1, pady=5)
+
+        # Plot Frame
+        self.plot_frame = Frame(self.master, width=900, height=800, bg="white")
+        self.plot_frame.grid(row=9, column=0, columnspan=3, pady=10)
 
     def load_logo(self, file_path):
         """Loads and places the logo image in the top-right corner."""
@@ -164,14 +172,17 @@ class PLAnalysisApp:
         Checkbutton(save_window, text="Raw Data", variable=self.save_raw_var).grid(row=1, column=0, sticky="w")
         Checkbutton(save_window, text="Instability Gradient", variable=self.save_instability_var).grid(row=2, column=0, sticky="w")
         Checkbutton(save_window, text="Halide Segregation", variable=self.save_segregation_var).grid(row=3, column=0, sticky="w")
-        Checkbutton(save_window, text="Combined Plots", variable=self.save_combined_var).grid(row=4, column=0, sticky="w")
+        Checkbutton(save_window, text="Log Spectra", variable=self.save_log_spectra_var).grid(row=4, column=0, sticky="w")
+        Checkbutton(save_window, text="Log Instability Gradient", variable=self.save_log_instability_var).grid(row=5, column=0, sticky="w")
+        Checkbutton(save_window, text="Log Halide Segregation", variable=self.save_log_segregation_var).grid(row=6, column=0, sticky="w")
+        Checkbutton(save_window, text="Combined Plots", variable=self.save_combined_var).grid(row=7, column=0, sticky="w")
 
         # Entry fields for file names
         for i, (plot_name, var) in enumerate(self.save_names.items()):
             Label(save_window, text=f"{plot_name} Name:").grid(row=i + 1, column=1, sticky="e", padx=10)
             Entry(save_window, textvariable=var, width=20).grid(row=i + 1, column=2, sticky="w")
 
-        Button(save_window, text="Save", command=lambda: self.save_plots(save_window)).grid(row=5, column=1, columnspan=2, pady=10)
+        Button(save_window, text="Save", command=lambda: self.save_plots(save_window)).grid(row=8, column=1, columnspan=2, pady=10)
 
     def save_plots(self, save_window):
         save_window.destroy()
@@ -185,6 +196,12 @@ class PLAnalysisApp:
             self.save_plot(self.plot_instability, save_dir, self.save_names["Instability Gradient"].get())
         if self.save_segregation_var.get():
             self.save_plot(self.plot_segregation, save_dir, self.save_names["Halide Segregation"].get())
+        if self.save_log_spectra_var.get():
+            self.save_plot(self.plot_log_spectra, save_dir, self.save_names["Log Spectra"].get())
+        if self.save_log_instability_var.get():
+            self.save_plot(self.plot_log_instability, save_dir, self.save_names["Log Instability Gradient"].get())
+        if self.save_log_segregation_var.get():
+            self.save_plot(self.plot_log_segregation, save_dir, self.save_names["Log Halide Segregation"].get())
         if self.save_combined_var.get():
             self.save_combined_plot(save_dir)
 
@@ -196,10 +213,13 @@ class PLAnalysisApp:
         print(f"Saved {plot_name}")
 
     def save_combined_plot(self, save_dir):
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        self.plot_spectra(axes[0])
-        self.plot_instability(axes[1])
-        self.plot_segregation(axes[2])
+        fig, axes = plt.subplots(2, 3, figsize=(14, 6), constrained_layout=True)
+        self.plot_spectra(axes[0, 0])
+        self.plot_instability(axes[0, 1])
+        self.plot_segregation(axes[0, 2])
+        self.plot_log_spectra(axes[1, 0])
+        self.plot_log_instability(axes[1, 1])
+        self.plot_log_segregation(axes[1, 2])
         fig.tight_layout()
         fig.savefig(f"{save_dir}/{self.save_names['Combined'].get()}.png")
         plt.close(fig)
@@ -210,21 +230,32 @@ class PLAnalysisApp:
             "Spectra": (
                 "Spectra:\n"
                 "The spectra plot shows the photoluminescence (PL) signal intensity as a function "
-                "of wavelength for different time intervals.\n\n"
+                "of wavelength for different time intervals. The logarithmic plot shows the same data on a logarithmic scale.\n\n"
                 "The raw data is taken from the PL measurements, where each curve corresponds "
                 "to a specific time interval.\n\n"
                 "X-axis: Wavelength (nm)\nY-axis: Intensity (a.u.)"
             ),
-            "Instability": (
-                "Instability Gradient:\n"
+            "Absolute Gradient": (
+                "Absolute Intensity Gradient:\n"
                 "This plot represents the instability gradient calculated from the PL spectra. "
-                "It shows the variation of PL intensity over time.\n\n"
+                "It shows the variation of PL intensity over time. The logarithmic plot shows the same data on a logarithmic scale.\n\n"
+                "It is computed as the numerical gradient of the raw photoluminescence (PL) counts "
+                "along the time axis (row-wise) and measures how the PL intensity changes with respect "
+                "to time for each wavelength.\n\n"
+                "Then the absolute value of the gradient is taken for each wavelength, and the mean "
+                "across all time intervals is calculated. This results in a single average gradient value "
+                "for each wavelength, representing how unstable or variable the PL intensity is over time "
+                "at that wavelength.\n\n"
                 "X-axis: Time (s)\nY-axis: Instability Gradient (a.u.)"
             ),
-            "Segregation": (
-                "Halide Segregation:\n"
-                "The halide segregation plot shows the change in the PL intensity that is associated "
-                "with halide segregation in the material.\n\n"
+            "Relative Change": (
+                "Relative Intensity Change:\n"
+                "This plot tracks relative changes in PL intensity. The logarithmic plot shows the same data on a logarithmic scale.\n\n"
+                "It is computed as the absolute differences in PL intensity between consecutive time points "
+                "and represents the magnitude of change in intensity over time at each wavelength.\n\n"
+                "The change is normalized by the intensity at the previous time step to obtain a relative metric.\n\n"
+                "The mean of the relative changes is then calculated across all time intervals for each wavelength "
+                "providing an average metric for each wavelength.\n\n"
                 "X-axis: Time (s)\nY-axis: Halide Segregation Intensity (a.u.)"
             ),
         }
@@ -234,19 +265,42 @@ class PLAnalysisApp:
         for widget in self.plot_frame.winfo_children():
             widget.destroy()
 
-        fig, axes = plt.subplots(2, 3, figsize=(18, 7), constrained_layout=True)
+        fig, axes = plt.subplots(2, 3, figsize=(14, 6), constrained_layout=True)
+
+        # Clear all axes
+        for ax in axes.flatten():
+            ax.clear()
+
+        # Plot in fixed positions
         if self.plot_spectra_var.get():
             self.plot_spectra(axes[0, 0])
+        else:
+            axes[0, 0].axis('off')
+
         if self.plot_instability_var.get():
             self.plot_instability(axes[0, 1])
+        else:
+            axes[0, 1].axis('off')
+
         if self.plot_segregation_var.get():
             self.plot_segregation(axes[0, 2])
+        else:
+            axes[0, 2].axis('off')
+
         if self.plot_log_spectra_var.get():
             self.plot_log_spectra(axes[1, 0])
+        else:
+            axes[1, 0].axis('off')
+
         if self.plot_log_instability_var.get():
             self.plot_log_instability(axes[1, 1])
+        else:
+            axes[1, 1].axis('off')
+
         if self.plot_log_segregation_var.get():
             self.plot_log_segregation(axes[1, 2])
+        else:
+            axes[1, 2].axis('off')
 
         canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
         toolbar = NavigationToolbar2Tk(canvas, self.plot_frame)
