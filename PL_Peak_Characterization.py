@@ -2,12 +2,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel, PhotoImage, StringVar, messagebox, HORIZONTAL, VERTICAL, RIGHT, BOTTOM, Y, X, LEFT, BOTH, Text
-from tkinter.simpledialog import askstring
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image, ImageTk
 from datetime import datetime
 from tkinter import Scrollbar, Canvas
-from tkinter import Listbox, MULTIPLE
 
 class PLAnalysisApp:
     def __init__(self, master):
@@ -124,7 +122,7 @@ class PLAnalysisApp:
         # Plot Selection
         Label(self.scrollable_frame, text="Select Plots:").grid(row=3, column=0, pady=5, sticky="w")
         Checkbutton(self.scrollable_frame, text="Spectra", variable=self.plot_spectra_var).grid(row=4, column=0,sticky="w")
-        Checkbutton(self.scrollable_frame, text="Flux Density", variable=self.plot_spectra_var).grid(row=5, column=0,
+        Checkbutton(self.scrollable_frame, text="Flux Density", variable=self.plot_luminescence_flux_density_var).grid(row=5, column=0,
                                                                                                 sticky="w")
         Checkbutton(self.scrollable_frame, text="Absolute Gradient", variable=self.plot_absolute_gradient_var).grid(
             row=6, column=0, sticky="w")
@@ -132,7 +130,7 @@ class PLAnalysisApp:
                                                                                                                 column=0,
                                                                                                                 sticky="w")
         Checkbutton(self.scrollable_frame, text="Log Spectra", variable=self.plot_log_spectra_var).grid(row=4, column=1, sticky="w")
-        Checkbutton(self.scrollable_frame, text="Log Flux Density", variable=self.plot_log_spectra_var).grid(row=5, column=1, sticky="w")
+        Checkbutton(self.scrollable_frame, text="Log Flux Density", variable=self.plot_log_luminescence_flux_density_var).grid(row=5, column=1, sticky="w")
         Checkbutton(self.scrollable_frame, text="Log Absolute Gradient",
                     variable=self.plot_log_absolute_gradient_var).grid(row=6, column=1, sticky="w")
         Checkbutton(self.scrollable_frame, text="Log Relative Change", variable=self.plot_log_relative_change_var).grid(
@@ -141,14 +139,17 @@ class PLAnalysisApp:
         # Trim and Filter Buttons
         Button(self.scrollable_frame, text="Trim Data", width=20, command=self.open_trim_options_window).grid(row=4,column=2,sticky="w")
         Button(self.scrollable_frame, text="Filter Data", width=20, command=self.open_filter_options_window).grid(row=5,column=2,sticky="w")
+        Button(self.scrollable_frame, text="Show Metadata", width=20, command=self.show_metadata).grid(row=6, column=2,sticky="w")
+
         # Info Buttons
         Button(self.scrollable_frame, text="Info: Spectra", width=20, anchor="w",
                command=lambda: self.show_info("Spectra")).grid(row=4, column=3, sticky="w")
+        Button(self.scrollable_frame, text="Info: Flux Density", width=20, anchor="w",
+               command=lambda: self.show_info("Flux Density")).grid(row=5, column=3, sticky="w")
         Button(self.scrollable_frame, text="Info: Absolute Gradient", width=20, anchor="w",
-               command=lambda: self.show_info("Absolute Gradient")).grid(row=5, column=3, sticky="w")
+               command=lambda: self.show_info("Absolute Gradient")).grid(row=6, column=3, sticky="w")
         Button(self.scrollable_frame, text="Info: Relative Change", width=20, anchor="w",
-               command=lambda: self.show_info("Relative Change")).grid(row=6, column=3, sticky="w")
-        Button(self.scrollable_frame, text="Show Metadata", width=20, command=self.show_metadata).grid(row=6, column=2, sticky="w")
+               command=lambda: self.show_info("Relative Change")).grid(row=7, column=3, sticky="w")
 
         # Legend Toggle
         Checkbutton(self.scrollable_frame, text="Show Legend", variable=self.show_legend_var).grid(row=8, column=0,
@@ -299,8 +300,8 @@ class PLAnalysisApp:
             columns = self.data.columns[1:].tolist()
             if 'Raw spectrum (counts)' in columns:
                 self.raw_counts = self.data['Raw spectrum (counts)'].values
-            if 'Luminescence flux density (photons/(s cm² nm))' in columns:
-                self.luminescence_flux_density = self.data['Luminescence flux density (photons/(s cm² nm))'].values
+            if 'Luminescence flux density (photons/(s cm²))' in columns:
+                self.luminescence_flux_density = self.data['Luminescence flux density (photons/(s cm²))'].values
 
             # Read the raw time labels from the file
             with open(self.file_path, 'r') as file:
@@ -382,12 +383,14 @@ class PLAnalysisApp:
 
         # Checkboxes for save options
         Checkbutton(save_window, text="Raw Data", variable=self.save_raw_var).grid(row=1, column=0, sticky="w")
-        Checkbutton(save_window, text="Absolute Gradient", variable=self.save_absolute_gradient_var).grid(row=2, column=0, sticky="w")
-        Checkbutton(save_window, text="Relative Change", variable=self.save_relative_change_var).grid(row=3, column=0, sticky="w")
-        Checkbutton(save_window, text="Log Spectra", variable=self.save_log_spectra_var).grid(row=4, column=0, sticky="w")
-        Checkbutton(save_window, text="Log Absolute Gradient", variable=self.save_log_absolute_gradient_var).grid(row=5, column=0, sticky="w")
-        Checkbutton(save_window, text="Log Relative Change", variable=self.save_log_relative_change_var).grid(row=6, column=0, sticky="w")
-        Checkbutton(save_window, text="Combined Plots", variable=self.save_combined_var).grid(row=7, column=0, sticky="w")
+        Checkbutton(save_window, text="Flux Density", variable=self.save_luminescence_flux_density_var).grid(row=2, column=0, sticky="w")
+        Checkbutton(save_window, text="Absolute Gradient", variable=self.save_absolute_gradient_var).grid(row=3, column=0, sticky="w")
+        Checkbutton(save_window, text="Relative Change", variable=self.save_relative_change_var).grid(row=4, column=0, sticky="w")
+        Checkbutton(save_window, text="Log Spectra", variable=self.save_log_spectra_var).grid(row=5, column=0, sticky="w")
+        Checkbutton(save_window, text="Log Flux Density", variable=self.save_log_luminescence_flux_density_var).grid(row=6,column=0,sticky="w")
+        Checkbutton(save_window, text="Log Absolute Gradient", variable=self.save_log_absolute_gradient_var).grid(row=7, column=0, sticky="w")
+        Checkbutton(save_window, text="Log Relative Change", variable=self.save_log_relative_change_var).grid(row=8, column=0, sticky="w")
+        Checkbutton(save_window, text="Combined Plots", variable=self.save_combined_var).grid(row=9, column=0, sticky="w")
 
         # Entry fields for file names
         for i, (plot_name, var) in enumerate(self.save_names.items()):
@@ -404,12 +407,16 @@ class PLAnalysisApp:
 
         if self.save_raw_var.get():
             self.save_plot(self.plot_spectra, save_dir, self.save_names["Raw Data"].get())
+        if self.save_luminescence_flux_density_var.get():
+            self.save_plot(self.plot_luminescence_flux_density, save_dir, self.save_names["Flux Density"].get())
         if self.save_absolute_gradient_var.get():
             self.save_plot(self.plot_absolute_gradient, save_dir, self.save_names["Absolute Gradient"].get())
         if self.save_relative_change_var.get():
             self.save_plot(self.plot_relative_change, save_dir, self.save_names["Relative Change"].get())
         if self.save_log_spectra_var.get():
             self.save_plot(self.plot_log_spectra, save_dir, self.save_names["Log Spectra"].get())
+        if self.save_log_luminescence_flux_density_var.get():
+            self.save_plot(self.plot_log_luminescence_flux_density, save_dir, self.save_names["Log Flux Density"].get())
         if self.save_log_absolute_gradient_var.get():
             self.save_plot(self.plot_log_absolute_gradient, save_dir, self.save_names["Log Absolute Gradient"].get())
         if self.save_log_relative_change_var.get():
@@ -425,13 +432,15 @@ class PLAnalysisApp:
         print(f"Saved {plot_name}")
 
     def save_combined_plot(self, save_dir):
-        fig, axes = plt.subplots(2, 3, figsize=(14, 6), constrained_layout=True)
+        fig, axes = plt.subplots(2, 4, figsize=(14, 6), constrained_layout=True)
         self.plot_spectra(axes[0, 0])
-        self.plot_absolute_gradient(axes[0, 1])
-        self.plot_relative_change(axes[0, 2])
+        self.plot_luminescence_flux_density(axes[0, 1])
+        self.plot_absolute_gradient(axes[0, 2])
+        self.plot_relative_change(axes[0, 3])
         self.plot_log_spectra(axes[1, 0])
-        self.plot_log_absolute_gradient(axes[1, 1])
-        self.plot_log_relative_change(axes[1, 2])
+        self.plot_log_luminescence_flux_density(axes[1, 1])
+        self.plot_log_absolute_gradient(axes[1, 2])
+        self.plot_log_relative_change(axes[1, 3])
         fig.tight_layout()
         fig.savefig(f"{save_dir}/{self.save_names['Combined'].get()}.png")
         plt.close(fig)
@@ -442,10 +451,16 @@ class PLAnalysisApp:
             "Spectra": (
                 "Spectra:\n"
                 "The spectra plot shows the photoluminescence (PL) signal intensity as a function "
-                "of wavelength for different time intervals. The logarithmic plot shows the same data on a logarithmic scale.\n\n"
-                "The raw data is taken from the PL measurements, where each curve corresponds "
-                "to a specific time interval.\n\n"
+                "of wavelength for one or multiple time intervals. The logarithmic plot shows the same data on a logarithmic scale.\n\n"
+                "The raw data is taken from the PL measurements. \n\n"
                 "X-axis: Wavelength (nm)\nY-axis: Intensity (a.u.)"
+            ),
+            "Flux Density": (
+                "Flux Density:\n"
+                "The luminescence flux density plot shows the lumiescence flux density in photons per second per square centimeter as a function "
+                "of wavelength for one or multiple time intervals. The logarithmic plot shows the same data on a logarithmic scale.\n\n"
+                "The luminescence flux density data is taken from the PL measurements.\n\n"
+                "X-axis: Wavelength (nm)\nY-axis: Luminescence flux density (photons/s cm^2)"
             ),
             "Absolute Gradient": (
                 "Absolute Intensity Gradient:\n"
@@ -474,92 +489,55 @@ class PLAnalysisApp:
         messagebox.showinfo(f"Info: {plot_type}", info.get(plot_type, "No information available."))
 
     def plot_in_window(self):
-        # Check if a file has been loaded
-        if self.data is None:
+        if not self.file_path:  # Check if a file is loaded
             messagebox.showerror("Error", "Please load a file first.")
             return
 
         for widget in self.plot_frame.winfo_children():
             widget.destroy()
 
-        # Enlarge plot window for better visualization
-        self.plot_frame.config(width=1600, height=800)
-
+        # Create the figure and axes for a 2x4 grid of plots
         fig, axes = plt.subplots(2, 4, figsize=(18, 12), constrained_layout=True)
 
-        # Clear all axes
-        for ax in axes.flatten():
-            ax.clear()
+        # Iterate through the axes and assign plots
+        plot_functions = [
+            self.plot_spectra if self.plot_spectra_var.get() else None,
+            self.plot_luminescence_flux_density if self.plot_luminescence_flux_density_var.get() else None,
+            self.plot_absolute_gradient if self.plot_absolute_gradient_var.get() else None,
+            self.plot_relative_change if self.plot_relative_change_var.get() else None,
+            self.plot_log_spectra if self.plot_log_spectra_var.get() else None,
+            self.plot_log_luminescence_flux_density if self.plot_log_luminescence_flux_density_var.get() else None,
+            self.plot_log_absolute_gradient if self.plot_log_absolute_gradient_var.get() else None,
+            self.plot_log_relative_change if self.plot_log_relative_change_var.get() else None,
+        ]
 
-        # Plot in fixed positions
-        if self.plot_spectra_var.get():
-            if self.raw_counts is not None:
-                self.plot_spectra(axes[0, 0])
-            elif self.luminescence_flux_density is not None:
-                self.plot_luminescence_flux_density(axes[0, 0])
+        for ax, plot_func in zip(axes.flatten(), plot_functions):
+            if plot_func:
+                plot_func(ax)
             else:
-                axes[0, 0].axis('off')
+                ax.axis('off')  # Turn off unused axes
 
-        if self.plot_absolute_gradient_var.get():
-            if self.raw_counts is not None:
-                self.plot_absolute_gradient(axes[0, 1])
-            elif self.luminescence_flux_density is not None:
-                self.plot_absolute_gradient(axes[0, 1])
-            else:
-                axes[0, 1].axis('off')
-
-        if self.plot_relative_change_var.get():
-            if self.raw_counts is not None:
-                self.plot_relative_change(axes[0, 2])
-            elif self.luminescence_flux_density is not None:
-                self.plot_relative_change(axes[0, 2])
-            else:
-                axes[0, 2].axis('off')
-
-        if self.luminescence_flux_density is not None and self.plot_spectra_var.get():
-            self.plot_luminescence_flux_density(axes[0, 3])
-        else:
-            axes[0, 3].axis('off')
-
-        if self.plot_log_spectra_var.get():
-            if self.raw_counts is not None:
-                self.plot_log_spectra(axes[1, 0])
-            elif self.luminescence_flux_density is not None:
-                self.plot_log_luminescence_flux_density(axes[1, 0])
-            else:
-                axes[1, 0].axis('off')
-
-        if self.plot_log_absolute_gradient_var.get():
-            if self.raw_counts is not None:
-                self.plot_log_absolute_gradient(axes[1, 1])
-            elif self.luminescence_flux_density is not None:
-                self.plot_log_absolute_gradient(axes[1, 1])
-            else:
-                axes[1, 1].axis('off')
-
-        if self.plot_log_relative_change_var.get():
-            if self.raw_counts is not None:
-                self.plot_log_relative_change(axes[1, 2])
-            elif self.luminescence_flux_density is not None:
-                self.plot_log_relative_change(axes[1, 2])
-            else:
-                axes[1, 2].axis('off')
-
-        if self.luminescence_flux_density is not None and self.plot_log_spectra_var.get():
-            self.plot_log_luminescence_flux_density(axes[1, 3])
-        else:
-            axes[1, 3].axis('off')
-
+        # Attach the canvas to the Tkinter frame
         canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
-        toolbar = NavigationToolbar2Tk(canvas, self.plot_frame)
         canvas.draw()
         canvas.get_tk_widget().pack()
 
     def plot_spectra(self, ax):
+        if self.raw_counts is None or self.wavelength is None or self.relative_times is None:
+            ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Raw PL Spectra")
+            return
+
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
+        if not selected_indices:
+            ax.text(0.5, 0.5, "No Time Selected", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Raw PL Spectra")
+            return
+
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
         for idx, i in enumerate(selected_indices):
             ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=self.relative_times[i])
+
         if self.show_legend_var.get():
             ax.legend()
         ax.set_xlabel("Wavelength (nm)")
@@ -575,7 +553,7 @@ class PLAnalysisApp:
         if self.show_legend_var.get():
             ax.legend()
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Luminescence Flux Density (photons/(s cm² nm))")
+        ax.set_ylabel("Luminescence Flux Density (photons/(s cm²))")
         ax.set_title("Luminescence Flux Density")
 
     def plot_log_luminescence_flux_density(self, ax):
@@ -588,7 +566,7 @@ class PLAnalysisApp:
             ax.legend()
         ax.set_yscale('log')
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Luminescence Flux Density (photons/(s cm² nm))")
+        ax.set_ylabel("Luminescence Flux Density (photons/(s cm²))")
         ax.set_title("Luminescence Flux Density (log)")
 
     def plot_absolute_gradient(self, ax):
@@ -659,3 +637,4 @@ if __name__ == "__main__":
     root = Tk()
     app = PLAnalysisApp(root)
     root.mainloop()
+
