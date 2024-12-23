@@ -46,26 +46,32 @@ class PLAnalysisApp:
         self.relative_times = None
 
         self.plot_spectra_var = IntVar(value=1)
+        self.plot_luminescence_flux_density_var = IntVar(value=1)
         self.plot_absolute_gradient_var = IntVar(value=1)
         self.plot_relative_change_var = IntVar(value=1)
         self.plot_log_spectra_var = IntVar(value=1)
+        self.plot_log_luminescence_flux_density_var = IntVar(value=1)
         self.plot_log_absolute_gradient_var = IntVar(value=1)
         self.plot_log_relative_change_var = IntVar(value=1)
         self.show_legend_var = IntVar(value=1)
 
         # Save options
         self.save_raw_var = IntVar(value=1)
+        self.save_luminescence_flux_density_var = IntVar(value=1)
         self.save_absolute_gradient_var = IntVar(value=1)
         self.save_relative_change_var = IntVar(value=1)
         self.save_log_spectra_var = IntVar(value=1)
+        self.save_log_luminescence_flux_density_var = IntVar(value=1)
         self.save_log_absolute_gradient_var = IntVar(value=1)
         self.save_log_relative_change_var = IntVar(value=1)
         self.save_combined_var = IntVar(value=1)
         self.save_names = {
             "Raw Data": StringVar(value="Raw_Data"),
+            "Luminescence Flux Density": StringVar(value="Luminescence_Flux_Density"),
             "Absolute Gradient": StringVar(value="Absolute_Gradient"),
             "Relative Change": StringVar(value="Relative_Change"),
             "Log Spectra": StringVar(value="Log_Spectra"),
+            "Log Luminescence Flux Density": StringVar(value="Log_Luminescence_Flux_Density"),
             "Log Absolute Gradient": StringVar(value="Log_Absolute_Gradient"),
             "Log Relative Change": StringVar(value="Log_Relative_Change"),
             "Combined": StringVar(value="Combined_Plots"),
@@ -99,7 +105,6 @@ class PLAnalysisApp:
         # Title
         Label(self.scrollable_frame, text="PL Analysis Tool", font=("Arial", 16)).grid(row=0, column=0, columnspan=3,
                                                                                        pady=10)
-
         # Load Logo in Top-Right Corner
         self.load_logo("./hzb_logo.jpg")
 
@@ -107,7 +112,7 @@ class PLAnalysisApp:
         Button(self.scrollable_frame, text="Load File", width=15, command=self.load_file).grid(row=1, column=0, padx=10,
                                                                                                pady=5, sticky="w")
         self.file_path_entry = Entry(self.scrollable_frame, width=80, state='disabled')
-        self.file_path_entry.grid(row=1, column=1, columnspan=2, pady=5, sticky="w")
+        self.file_path_entry.grid(row=1, column=1, columnspan=2, sticky="w")
 
         # Buttons Section
         Button(self.scrollable_frame, text="Save Plots", width=15, command=self.save_plots_dialog).grid(row=2, column=0,
@@ -118,40 +123,44 @@ class PLAnalysisApp:
 
         # Plot Selection
         Label(self.scrollable_frame, text="Select Plots:").grid(row=3, column=0, pady=5, sticky="w")
-        Checkbutton(self.scrollable_frame, text="Spectra", variable=self.plot_spectra_var).grid(row=4, column=0,
+        Checkbutton(self.scrollable_frame, text="Spectra", variable=self.plot_spectra_var).grid(row=4, column=0,sticky="w")
+        Checkbutton(self.scrollable_frame, text="Flux Density", variable=self.plot_spectra_var).grid(row=5, column=0,
                                                                                                 sticky="w")
         Checkbutton(self.scrollable_frame, text="Absolute Gradient", variable=self.plot_absolute_gradient_var).grid(
-            row=5, column=0, sticky="w")
-        Checkbutton(self.scrollable_frame, text="Relative Change", variable=self.plot_relative_change_var).grid(row=6,
+            row=6, column=0, sticky="w")
+        Checkbutton(self.scrollable_frame, text="Relative Change", variable=self.plot_relative_change_var).grid(row=7,
                                                                                                                 column=0,
                                                                                                                 sticky="w")
-        Checkbutton(self.scrollable_frame, text="Log Spectra", variable=self.plot_log_spectra_var).grid(row=4, column=1,
-                                                                                                        sticky="w")
+        Checkbutton(self.scrollable_frame, text="Log Spectra", variable=self.plot_log_spectra_var).grid(row=4, column=1, sticky="w")
+        Checkbutton(self.scrollable_frame, text="Log Flux Density", variable=self.plot_log_spectra_var).grid(row=5, column=1, sticky="w")
         Checkbutton(self.scrollable_frame, text="Log Absolute Gradient",
-                    variable=self.plot_log_absolute_gradient_var).grid(row=5, column=1, sticky="w")
+                    variable=self.plot_log_absolute_gradient_var).grid(row=6, column=1, sticky="w")
         Checkbutton(self.scrollable_frame, text="Log Relative Change", variable=self.plot_log_relative_change_var).grid(
-            row=6, column=1, sticky="w")
+            row=7, column=1, sticky="w")
 
+        # Trim and Filter Buttons
+        Button(self.scrollable_frame, text="Trim Data", width=20, command=self.open_trim_options_window).grid(row=4,column=2,sticky="w")
+        Button(self.scrollable_frame, text="Filter Data", width=20, command=self.open_filter_options_window).grid(row=5,column=2,sticky="w")
         # Info Buttons
         Button(self.scrollable_frame, text="Info: Spectra", width=20, anchor="w",
-               command=lambda: self.show_info("Spectra")).grid(row=4, column=2, sticky="w")
+               command=lambda: self.show_info("Spectra")).grid(row=4, column=3, sticky="w")
         Button(self.scrollable_frame, text="Info: Absolute Gradient", width=20, anchor="w",
-               command=lambda: self.show_info("Absolute Gradient")).grid(row=5, column=2, sticky="w")
+               command=lambda: self.show_info("Absolute Gradient")).grid(row=5, column=3, sticky="w")
         Button(self.scrollable_frame, text="Info: Relative Change", width=20, anchor="w",
-               command=lambda: self.show_info("Relative Change")).grid(row=6, column=2, sticky="w")
-        Button(self.scrollable_frame, text="Show Metadata", width=20, command=self.show_metadata).grid(row=7, column=2, pady=5, sticky="w")
+               command=lambda: self.show_info("Relative Change")).grid(row=6, column=3, sticky="w")
+        Button(self.scrollable_frame, text="Show Metadata", width=20, command=self.show_metadata).grid(row=6, column=2, sticky="w")
 
         # Legend Toggle
-        Checkbutton(self.scrollable_frame, text="Show Legend", variable=self.show_legend_var).grid(row=7, column=0,
+        Checkbutton(self.scrollable_frame, text="Show Legend", variable=self.show_legend_var).grid(row=8, column=0,
                                                                                                    sticky="w")
 
         # Plot Frame
-        self.plot_frame = Frame(self.scrollable_frame, width=900, height=800, bg="white")
-        self.plot_frame.grid(row=8, column=0, columnspan=3, pady=10)
+        self.plot_frame = Frame(self.scrollable_frame, width=1200, height=800, bg="white")
+        self.plot_frame.grid(row=9, column=0, columnspan=3, pady=10)
 
         # Raw Data Selection (Shifted Below the Plots)
         self.time_check_frame = Frame(self.scrollable_frame)
-        self.time_check_frame.grid(row=9, column=0, columnspan=3, pady=5)
+        self.time_check_frame.grid(row=11, column=0, columnspan=3, pady=5)
 
         Button(self.scrollable_frame, text="Update Raw Plot", width=15, command=self.update_raw_plot).grid(row=10,
                                                                                                            column=1)
@@ -163,9 +172,68 @@ class PLAnalysisApp:
             self.logo_image = ImageTk.PhotoImage(image)
 
             # Display the logo
-            Label(self.scrollable_frame, image=self.logo_image).grid(row=0, column=2, sticky="ne", padx=10, pady=10)
+            Label(self.scrollable_frame, image=self.logo_image).grid(row=0, column=2, sticky="ne")
         except Exception as e:
             print(f"Error loading logo: {e}")
+
+    def open_trim_options_window(self):
+        trim_window = Toplevel(self.master)
+        trim_window.title("Trim Data Options")
+
+        Label(trim_window, text="Trim Data Options", font=("Arial", 14)).pack(pady=10)
+
+        # Add trim options here
+        trim_option1 = IntVar()
+        Checkbutton(trim_window, text="Trim Option 1", variable=trim_option1).pack(anchor="w")
+        Button(trim_window, text="Info", command=lambda: self.show_option_info("Trim Option 1 Info")).pack(anchor="w")
+
+        trim_option2 = IntVar()
+        Checkbutton(trim_window, text="Trim Option 2", variable=trim_option2).pack(anchor="w")
+        Button(trim_window, text="Info", command=lambda: self.show_option_info("Trim Option 2 Info")).pack(anchor="w")
+
+        # Add more trim options as needed
+
+        Button(trim_window, text="Apply", command=lambda: self.apply_trim_options([trim_option1, trim_option2])).pack(
+            pady=10)
+
+    def open_filter_options_window(self):
+        filter_window = Toplevel(self.master)
+        filter_window.title("Filter Data Options")
+
+        Label(filter_window, text="Filter Data Options", font=("Arial", 14)).pack(pady=10)
+
+        # Add filter options here
+        filter_option1 = IntVar()
+        Checkbutton(filter_window, text="Filter Option 1", variable=filter_option1).pack(anchor="w")
+        Button(filter_window, text="Info", command=lambda: self.show_option_info("Filter Option 1 Info")).pack(
+            anchor="w")
+
+        filter_option2 = IntVar()
+        Checkbutton(filter_window, text="Filter Option 2", variable=filter_option2).pack(anchor="w")
+        Button(filter_window, text="Info", command=lambda: self.show_option_info("Filter Option 2 Info")).pack(
+            anchor="w")
+
+        # Add more filter options as needed
+
+        Button(filter_window, text="Apply",
+               command=lambda: self.apply_filter_options([filter_option1, filter_option2])).pack(pady=10)
+
+    def show_option_info(self, info_text):
+        messagebox.showinfo("Option Info", info_text)
+
+    def apply_trim_options(self, options):
+        # Apply the selected trim options to the data
+        for option in options:
+            if option.get():
+                print(f"Applying {option}...")  # Replace with actual logic
+        self.update_raw_plot()
+
+    def apply_filter_options(self, options):
+        # Apply the selected filter options to the data
+        for option in options:
+            if option.get():
+                print(f"Applying {option}...")  # Replace with actual logic
+        self.update_raw_plot()
 
     def show_metadata(self):
         """Display metadata in a new scrollable window."""
@@ -209,8 +277,12 @@ class PLAnalysisApp:
         self.file_path_entry.insert(0, self.file_path)
         self.file_path_entry.config(state='disabled')
 
+        # Initialize attributes
+        self.raw_counts = None
+        self.luminescence_flux_density = None
+
         # Scan the file to find the header line
-        header_line = "Wavelength (nm)\tRaw Spectrum (counts)"
+        header_line = "Wavelength (nm)"
         skip_rows = 0
         with open(self.file_path, 'r') as file:
             for line in file:
@@ -220,25 +292,45 @@ class PLAnalysisApp:
 
         try:
             # Load the data file using pandas to handle metadata rows
-            data = pd.read_csv(self.file_path, sep="\t", skiprows=skip_rows + 1)
-            self.wavelength = data.iloc[:, 0].values
-            self.raw_counts = data.iloc[:, 1:].values
+            self.data = pd.read_csv(self.file_path, sep="\t", skiprows=skip_rows + 1)
+            self.wavelength = self.data.iloc[:, 0].values
 
+            # Determine the available columns
+            columns = self.data.columns[1:].tolist()
+            if 'Raw spectrum (counts)' in columns:
+                self.raw_counts = self.data['Raw spectrum (counts)'].values
+            if 'Luminescence flux density (photons/(s cm² nm))' in columns:
+                self.luminescence_flux_density = self.data['Luminescence flux density (photons/(s cm² nm))'].values
+
+            # Read the raw time labels from the file
             with open(self.file_path, 'r') as file:
                 lines = file.readlines()
-            raw_time_labels = lines[0].strip().split("\t")[1:]
-            self.relative_times = self.calculate_relative_times(raw_time_labels)
+
+            if len(lines) > 0:
+                raw_time_labels = lines[0].strip().split("\t")[1:]
+                if len(raw_time_labels) > 1:
+                    self.relative_times = self.calculate_relative_times(raw_time_labels)
+                else:
+                    self.relative_times = []
+
             self.setup_time_checkboxes()
 
+            # Determine if the file contains single or continuous measurements
+            self.is_single_measurement = (self.raw_counts is not None and self.raw_counts.ndim == 1) or (
+                        self.luminescence_flux_density is not None and self.luminescence_flux_density.ndim == 1)
+
+        except pd.errors.EmptyDataError:
+            messagebox.showerror("Error", "Error loading file: No columns to parse from file")
+            self.data = None
         except ValueError as e:
-            messagebox.showerror("Error", f"Error loading file: {e}")
-            self.relative_times = []
+            messagebox.showerror("Error", "Error loading file: {}".format(e))
+            self.data = None
         except IndexError:
             messagebox.showerror("Error", "Error parsing times: list index out of range")
-            self.relative_times = []
+            self.data = None
         except Exception as e:
-            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
-            self.relative_times = []
+            messagebox.showerror("Error", "An unexpected error occurred: {}".format(e))
+            self.data = None
 
     def calculate_relative_times(self, raw_times):
         try:
@@ -390,7 +482,10 @@ class PLAnalysisApp:
         for widget in self.plot_frame.winfo_children():
             widget.destroy()
 
-        fig, axes = plt.subplots(2, 3, figsize=(14, 6), constrained_layout=True)
+        # Enlarge plot window for better visualization
+        self.plot_frame.config(width=1600, height=800)
+
+        fig, axes = plt.subplots(2, 4, figsize=(18, 12), constrained_layout=True)
 
         # Clear all axes
         for ax in axes.flatten():
@@ -398,34 +493,62 @@ class PLAnalysisApp:
 
         # Plot in fixed positions
         if self.plot_spectra_var.get():
-            self.plot_spectra(axes[0, 0])
-        else:
-            axes[0, 0].axis('off')
+            if self.raw_counts is not None:
+                self.plot_spectra(axes[0, 0])
+            elif self.luminescence_flux_density is not None:
+                self.plot_luminescence_flux_density(axes[0, 0])
+            else:
+                axes[0, 0].axis('off')
 
         if self.plot_absolute_gradient_var.get():
-            self.plot_absolute_gradient(axes[0, 1])
-        else:
-            axes[0, 1].axis('off')
+            if self.raw_counts is not None:
+                self.plot_absolute_gradient(axes[0, 1])
+            elif self.luminescence_flux_density is not None:
+                self.plot_absolute_gradient(axes[0, 1])
+            else:
+                axes[0, 1].axis('off')
 
         if self.plot_relative_change_var.get():
-            self.plot_relative_change(axes[0, 2])
+            if self.raw_counts is not None:
+                self.plot_relative_change(axes[0, 2])
+            elif self.luminescence_flux_density is not None:
+                self.plot_relative_change(axes[0, 2])
+            else:
+                axes[0, 2].axis('off')
+
+        if self.luminescence_flux_density is not None and self.plot_spectra_var.get():
+            self.plot_luminescence_flux_density(axes[0, 3])
         else:
-            axes[0, 2].axis('off')
+            axes[0, 3].axis('off')
 
         if self.plot_log_spectra_var.get():
-            self.plot_log_spectra(axes[1, 0])
-        else:
-            axes[1, 0].axis('off')
+            if self.raw_counts is not None:
+                self.plot_log_spectra(axes[1, 0])
+            elif self.luminescence_flux_density is not None:
+                self.plot_log_luminescence_flux_density(axes[1, 0])
+            else:
+                axes[1, 0].axis('off')
 
         if self.plot_log_absolute_gradient_var.get():
-            self.plot_log_absolute_gradient(axes[1, 1])
-        else:
-            axes[1, 1].axis('off')
+            if self.raw_counts is not None:
+                self.plot_log_absolute_gradient(axes[1, 1])
+            elif self.luminescence_flux_density is not None:
+                self.plot_log_absolute_gradient(axes[1, 1])
+            else:
+                axes[1, 1].axis('off')
 
         if self.plot_log_relative_change_var.get():
-            self.plot_log_relative_change(axes[1, 2])
+            if self.raw_counts is not None:
+                self.plot_log_relative_change(axes[1, 2])
+            elif self.luminescence_flux_density is not None:
+                self.plot_log_relative_change(axes[1, 2])
+            else:
+                axes[1, 2].axis('off')
+
+        if self.luminescence_flux_density is not None and self.plot_log_spectra_var.get():
+            self.plot_log_luminescence_flux_density(axes[1, 3])
         else:
-            axes[1, 2].axis('off')
+            axes[1, 3].axis('off')
 
         canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
         toolbar = NavigationToolbar2Tk(canvas, self.plot_frame)
@@ -442,6 +565,31 @@ class PLAnalysisApp:
         ax.set_xlabel("Wavelength (nm)")
         ax.set_ylabel("Counts")
         ax.set_title("Raw PL Spectra")
+
+    def plot_luminescence_flux_density(self, ax):
+        selected_indices = [i for var, i in self.time_checkboxes if var.get()]
+        colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
+        for idx, i in enumerate(selected_indices):
+            ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx],
+                    label=self.relative_times[i])
+        if self.show_legend_var.get():
+            ax.legend()
+        ax.set_xlabel("Wavelength (nm)")
+        ax.set_ylabel("Luminescence Flux Density (photons/(s cm² nm))")
+        ax.set_title("Luminescence Flux Density")
+
+    def plot_log_luminescence_flux_density(self, ax):
+        selected_indices = [i for var, i in self.time_checkboxes if var.get()]
+        colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
+        for idx, i in enumerate(selected_indices):
+            ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx],
+                    label=self.relative_times[i])
+        if self.show_legend_var.get():
+            ax.legend()
+        ax.set_yscale('log')
+        ax.set_xlabel("Wavelength (nm)")
+        ax.set_ylabel("Luminescence Flux Density (photons/(s cm² nm))")
+        ax.set_title("Luminescence Flux Density (log)")
 
     def plot_absolute_gradient(self, ax):
         gradient = np.gradient(self.raw_counts, axis=0)
@@ -502,6 +650,7 @@ class PLAnalysisApp:
         ax.set_yscale('log')
         if self.show_legend_var.get():
             ax.legend()
+
 
     def update_raw_plot(self):
         self.plot_in_window()
