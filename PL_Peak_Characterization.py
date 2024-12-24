@@ -268,6 +268,15 @@ class PLAnalysisApp:
         scrollbar.pack(side="right", fill="y")
         text_widget.config(state="disabled")
 
+    def is_single_measurement(self):
+        self.is_single_measurement_flag = False
+
+    def contains_counts(self):
+        self.contains_counts_flag = False
+
+    def contains_flux(self):
+        self.contains_flux_flag = False
+
     def load_file(self):
         self.file_path = filedialog.askopenfilename(title="Select Data File", filetypes=[("Text Files", "*.txt")])
         if not self.file_path:
@@ -293,15 +302,21 @@ class PLAnalysisApp:
 
         try:
             # Load the data file using pandas to handle metadata rows
-            self.data = pd.read_csv(self.file_path, sep="\t", skiprows=skip_rows + 1)
+            self.data = pd.read_csv(self.file_path, sep="\t", skiprows=skip_rows +1)
+            self.headers = pd.read_csv(self.file_path, sep="\t", skiprows=skip_rows)
             self.wavelength = self.data.iloc[:, 0].values
 
             # Determine the available columns
-            columns = self.data.columns[1:].tolist()
-            if 'Raw spectrum (counts)' in columns:
-                self.raw_counts = self.data['Raw spectrum (counts)'].values
+            columns = self.headers.columns[1:].tolist()
+
+            if 'Raw Spectrum (counts)' in columns:
+                self.raw_counts = self.data.iloc[:, 1:].values  # Ensure correct data extraction
+                self.contains_counts_flag = True
+
             if 'Luminescence flux density (photons/(s cm²))' in columns:
-                self.luminescence_flux_density = self.data['Luminescence flux density (photons/(s cm²))'].values
+                self.luminescence_flux_density = self.data.iloc[:, 1:].values  # Ensure correct data extraction
+                self.contains_flux_flag = True
+
 
             # Read the raw time labels from the file
             with open(self.file_path, 'r') as file:
@@ -311,14 +326,16 @@ class PLAnalysisApp:
                 raw_time_labels = lines[0].strip().split("\t")[1:]
                 if len(raw_time_labels) > 1:
                     self.relative_times = self.calculate_relative_times(raw_time_labels)
+                    self.is_single_measurement_flag = False
                 else:
                     self.relative_times = []
+                    self.is_single_measurement_flag = True
 
             self.setup_time_checkboxes()
 
             # Determine if the file contains single or continuous measurements
             self.is_single_measurement = (self.raw_counts is not None and self.raw_counts.ndim == 1) or (
-                        self.luminescence_flux_density is not None and self.luminescence_flux_density.ndim == 1)
+                    self.luminescence_flux_density is not None and self.luminescence_flux_density.ndim == 1)
 
         except pd.errors.EmptyDataError:
             messagebox.showerror("Error", "Error loading file: No columns to parse from file")
@@ -489,36 +506,80 @@ class PLAnalysisApp:
         messagebox.showinfo(f"Info: {plot_type}", info.get(plot_type, "No information available."))
 
     def plot_in_window(self):
-        if not self.file_path:  # Check if a file is loaded
+        # Check if a file has been loaded with valid data
+        if len(self.wavelength) < 2:
             messagebox.showerror("Error", "Please load a file first.")
             return
 
         for widget in self.plot_frame.winfo_children():
             widget.destroy()
 
-        # Create the figure and axes for a 2x4 grid of plots
+        # Enlarge plot window for better visualization
+        self.plot_frame.config(width=1600, height=800)
+
         fig, axes = plt.subplots(2, 4, figsize=(18, 12), constrained_layout=True)
 
-        # Iterate through the axes and assign plots
-        plot_functions = [
-            self.plot_spectra if self.plot_spectra_var.get() else None,
-            self.plot_luminescence_flux_density if self.plot_luminescence_flux_density_var.get() else None,
-            self.plot_absolute_gradient if self.plot_absolute_gradient_var.get() else None,
-            self.plot_relative_change if self.plot_relative_change_var.get() else None,
-            self.plot_log_spectra if self.plot_log_spectra_var.get() else None,
-            self.plot_log_luminescence_flux_density if self.plot_log_luminescence_flux_density_var.get() else None,
-            self.plot_log_absolute_gradient if self.plot_log_absolute_gradient_var.get() else None,
-            self.plot_log_relative_change if self.plot_log_relative_change_var.get() else None,
-        ]
+        # Clear all axes
+        for ax in axes.flatten():
+            ax.clear()
 
-        for ax, plot_func in zip(axes.flatten(), plot_functions):
-            if plot_func:
-                plot_func(ax)
+        # Plot in fixed positions
+        if self.plot_spectra_var.get():
+            if self.raw_counts is not None and self.raw_counts.size > 0:
+                self.plot_spectra(axes[0, 0])
             else:
-                ax.axis('off')  # Turn off unused axes
+                axes[0, 0].axis('off')
 
-        # Attach the canvas to the Tkinter frame
+        if self.plot_luminescence_flux_density_var.get() and self.luminescence_flux_density is not None and self.luminescence_flux_density.size > 0:
+            self.plot_luminescence_flux_density(axes[0, 1])
+        else:
+            axes[0, 1].axis('off')
+
+        if self.plot_absolute_gradient_var.get():
+            if self.raw_counts is not None and self.raw_counts.size > 0:
+                self.plot_absolute_gradient(axes[0, 2])
+            elif self.luminescence_flux_density is not None and self.luminescence_flux_density.size > 0:
+                self.plot_absolute_gradient(axes[0, 2])
+            else:
+                axes[0, 2].axis('off')
+
+        if self.plot_relative_change_var.get():
+            if self.raw_counts is not None and self.raw_counts.size > 0:
+                self.plot_relative_change(axes[0, 3])
+            elif self.luminescence_flux_density is not None and self.luminescence_flux_density.size > 0:
+                self.plot_relative_change(axes[0, 3])
+            else:
+                axes[0, 3].axis('off')
+
+        if self.plot_log_spectra_var.get():
+            if self.raw_counts is not None and self.raw_counts.size > 0:
+                self.plot_log_spectra(axes[1, 0])
+            else:
+                axes[1, 0].axis('off')
+
+        if self.plot_log_luminescence_flux_density_var.get() and self.luminescence_flux_density is not None and self.luminescence_flux_density.size > 0:
+            self.plot_log_luminescence_flux_density(axes[1, 1])
+        else:
+            axes[1, 1].axis('off')
+
+        if self.plot_log_absolute_gradient_var.get():
+            if self.raw_counts is not None and self.raw_counts.size > 0:
+                self.plot_log_absolute_gradient(axes[1, 2])
+            elif self.luminescence_flux_density is not None and self.luminescence_flux_density.size > 0:
+                self.plot_log_absolute_gradient(axes[1, 2])
+            else:
+                axes[1, 2].axis('off')
+
+        if self.plot_log_relative_change_var.get():
+            if self.raw_counts is not None and self.raw_counts.size > 0:
+                self.plot_log_relative_change(axes[1, 3])
+            elif self.luminescence_flux_density is not None and self.luminescence_flux_density.size > 0:
+                self.plot_log_relative_change(axes[1, 3])
+            else:
+                axes[1, 3].axis('off')
+
         canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
+        toolbar = NavigationToolbar2Tk(canvas, self.plot_frame)
         canvas.draw()
         canvas.get_tk_widget().pack()
 
@@ -545,11 +606,22 @@ class PLAnalysisApp:
         ax.set_title("Raw PL Spectra")
 
     def plot_luminescence_flux_density(self, ax):
+        if self.luminescence_flux_density is None or self.wavelength is None or self.relative_times is None:
+            ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Luminescence Flux Density")
+            return
+
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
+        if not selected_indices:
+            ax.text(0.5, 0.5, "No Time Selected", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Luminescence Flux Density")
+            return
+
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
         for idx, i in enumerate(selected_indices):
             ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx],
                     label=self.relative_times[i])
+
         if self.show_legend_var.get():
             ax.legend()
         ax.set_xlabel("Wavelength (nm)")
@@ -557,11 +629,22 @@ class PLAnalysisApp:
         ax.set_title("Luminescence Flux Density")
 
     def plot_log_luminescence_flux_density(self, ax):
+        if self.luminescence_flux_density is None or self.wavelength is None or self.relative_times is None:
+            ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Luminescence Flux Density (log)")
+            return
+
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
+        if not selected_indices:
+            ax.text(0.5, 0.5, "No Time Selected", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Luminescence Flux Density (log)")
+            return
+
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
         for idx, i in enumerate(selected_indices):
             ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx],
                     label=self.relative_times[i])
+
         if self.show_legend_var.get():
             ax.legend()
         ax.set_yscale('log')
@@ -570,6 +653,11 @@ class PLAnalysisApp:
         ax.set_title("Luminescence Flux Density (log)")
 
     def plot_absolute_gradient(self, ax):
+        if self.raw_counts is None or self.raw_counts.ndim != 2:
+            ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Absolute Gradient")
+            return
+
         gradient = np.gradient(self.raw_counts, axis=0)
         mean_gradient = np.mean(np.abs(gradient), axis=1)
         ax.plot(self.wavelength, mean_gradient, color="blue", label="Absolute Gradient")
@@ -580,6 +668,11 @@ class PLAnalysisApp:
             ax.legend()
 
     def plot_relative_change(self, ax):
+        if self.raw_counts is None or self.raw_counts.ndim != 2:
+            ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Relative Change")
+            return
+
         shape_change = np.abs(np.diff(self.raw_counts, axis=1))
         epsilon = 1e-8
         quotient = shape_change / (np.abs(self.raw_counts[:, :-1]) + epsilon)
@@ -593,10 +686,21 @@ class PLAnalysisApp:
             ax.legend()
 
     def plot_log_spectra(self, ax):
+        if self.raw_counts is None or self.wavelength is None or self.relative_times is None:
+            ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Raw PL Spectra (log)")
+            return
+
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
+        if not selected_indices:
+            ax.text(0.5, 0.5, "No Time Selected", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Raw PL Spectra (log)")
+            return
+
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
         for idx, i in enumerate(selected_indices):
             ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=self.relative_times[i])
+
         if self.show_legend_var.get():
             ax.legend()
         ax.set_yscale('log')
