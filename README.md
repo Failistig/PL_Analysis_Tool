@@ -1,15 +1,14 @@
 Photoluminescence (PL) Analysis Tool
 
-PL Analysis Tool is a Python-based GUI application for analyzing photoluminescence measurements. This tool supports both continuous and non-continuous measurement data, providing comprehensive visualization of spectra, instability gradients, and halide segregation. It offers interactive data selection, plot customization, and metadata display.
+PL Analysis Tool is a Python-based GUI application for analyzing photoluminescence measurements. This tool supports both continuous and non-continuous measurement data, providing comprehensive visualization of spectra, instability gradients, and relative changes. It offers interactive data selection, plot customization, and metadata display.
 
 
 Features:
 
-Load photoluminescence measurement data from text files.
-Visualize raw spectra, instability gradients, and halide segregation.
+Load and filter photoluminescence measurement data from text files.
+Visualize raw spectra, luminescence flux data, instability gradients, and relative changes.
 Supports both linear and logarithmic plots.
 Save plots in PNG format.
-Interactive GUI built with Tkinter.
 
 
 Requirements:
@@ -56,7 +55,12 @@ Run the application: python PL_Peak_Characterization.py
 Using the GUI:
 
 Click on "Load File" to select a text file containing photoluminescence measurement data.
-Select the types of plots you want to visualize (Spectra, Instability Gradient, Halide Segregation, and their logarithmic counterparts).
+Select the types of plots you want to visualize (Spectra, Instability Gradient, Relative Change, and their logarithmic counterparts).
 Click on "Plot All" to generate the plots.
 Use the "Save Plots" button to save the current plots as PNG files.
-Click on "Update Raw Plot" to refresh the raw data plot based on selected time intervals.
+.
+.
+.
+.
+.
+.
