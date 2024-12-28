@@ -1,16 +1,11 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel, PhotoImage, StringVar, messagebox, HORIZONTAL, VERTICAL, RIGHT, BOTTOM, Y, X, LEFT, BOTH, Text
+from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel, StringVar, messagebox, Text
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image, ImageTk
 from datetime import datetime
 from tkinter import Scrollbar, Canvas
-
-global matching_col_raw
-global col_index_raw
-global matching_col_flux
-global col_index_flux
 
 class PLAnalysisApp:
     def __init__(self, master):
@@ -155,15 +150,18 @@ class PLAnalysisApp:
         Checkbutton(self.scrollable_frame, text="Log Relative Change", variable=self.plot_log_relative_change_var).grid(
             row=7, column=1, sticky="w")
 
-        # Control buttons
-        Button(self.scrollable_frame, text="Trim Data", width=20, command=self.open_trim_options_window).grid(row=4,
-                                                                                                              column=2,
-                                                                                                              sticky="w")
-        Button(self.scrollable_frame, text="Filter Data", width=20, command=self.open_filter_options_window).grid(row=5,
-                                                                                                                  column=2,
-                                                                                                                  sticky="w")
-        Button(self.scrollable_frame, text="Show Metadata", width=20, command=self.show_metadata).grid(row=6, column=2,
+        # Add new filter buttons
+        Button(self.scrollable_frame, text="Wavelength Filter", width=20,
+               command=self.open_filter_wavelength_range_window).grid(row=5, column=2, sticky="w")
+        Button(self.scrollable_frame, text="Intensity Filter", width=20,
+               command=self.open_filter_by_intensity_range_window).grid(row=6, column=2, sticky="w")
+        Button(self.scrollable_frame, text="Smoothing", width=20,
+               command=self.open_filter_by_moving_average_window).grid(row=7, column=2, sticky="w")
+        Button(self.scrollable_frame, text="Show Metadata", width=20, command=self.show_metadata).grid(row=8, column=2,
                                                                                                        sticky="w")
+        # Reset Filter Button
+        Button(self.scrollable_frame, text="Reset Filter", width=20,
+               command=self.reset_filters).grid(row=4, column=2, sticky="w")
 
         # Info Buttons
         Button(self.scrollable_frame, text="Info: Spectra", width=20, anchor="w",
@@ -206,72 +204,308 @@ class PLAnalysisApp:
         except Exception as e:
             print(f"Error loading logo: {e}")
 
-    def update_date_label(self):
-        """Update the date label with the measurement date."""
-        if self.measurement_date:
-            self.date_label.config(text=f"Measurement Date: {self.measurement_date}")
+    # Show info for filter options
+    def show_option_info(self, filter_type):
+        info_messages = {
+            "Filter by Wavelength Range": (
+                "Filter by Wavelength Range:\n\n"
+                "This filter allows you to specify a wavelength range (min and max in nm).\n"
+                "All data points outside this range will be removed from the dataset.\n\n"
+                "Example:\n- Min Wavelength: 400\n- Max Wavelength: 800"
+            ),
+            "Filter by Intensity Threshold": (
+                "Filter by Intensity Threshold:\n\n"
+                "This filter removes data points where the intensity is above or below the specified thresholds.\n"
+                "You can use this to exclude low- or high-intensity data from the analysis.\n\n"
+                "If one field is left blank, the filter will not apply to that bound.\n\n"
+                "Example:\n Min=100, Max=1000:\n\n Retains intensities between 100 and 1000.\n"
+            ),
+            "Filter by Moving Average": (
+                "Filter by Moving Average:\n\n"
+                "This filter smooths the data using a moving average with a specified window size.\n"
+                "A larger window size results in stronger smoothing.\n\n"
+                "Example:\n- Window Size: 5"
+            ),
+        }
+        messagebox.showinfo("Filter Info", info_messages.get(filter_type, "No information available."))
 
-    def open_trim_options_window(self):
-        trim_window = Toplevel(self.master)
-        trim_window.title("Trim Data Options")
+    # Apply filter by wavelength range
+    def apply_filter_by_wavelength_range(self, min_wavelength, max_wavelength, filter_window):
+        """Filters the data based on the provided wavelength range."""
+        try:
+            # Use full range if inputs are empty
+            min_wavelength = float(min_wavelength) if min_wavelength.strip() else float('-inf')
+            max_wavelength = float(max_wavelength) if max_wavelength.strip() else float('inf')
 
-        Label(trim_window, text="Trim Data Options", font=("Arial", 14)).pack(pady=10)
+            print(f"Applying wavelength filter with Min: {min_wavelength}, Max: {max_wavelength}")
 
-        # Add trim options here
-        trim_option1 = IntVar()
-        Checkbutton(trim_window, text="Trim Option 1", variable=trim_option1).pack(anchor="w")
-        Button(trim_window, text="Info", command=lambda: self.show_option_info("Trim Option 1 Info")).pack(anchor="w")
+            # Mask for valid wavelengths
+            wavelength_mask = (self.wavelength >= min_wavelength) & (self.wavelength <= max_wavelength)
 
-        trim_option2 = IntVar()
-        Checkbutton(trim_window, text="Trim Option 2", variable=trim_option2).pack(anchor="w")
-        Button(trim_window, text="Info", command=lambda: self.show_option_info("Trim Option 2 Info")).pack(anchor="w")
+            # Apply mask to wavelength data
+            self.wavelength = self.wavelength[wavelength_mask]
 
-        # Add more trim options as needed
+            # Apply mask to raw counts if available
+            if self.contains_counts_flag and self.raw_counts is not None:
+                if self.raw_counts.ndim == 1:  # Single measurement
+                    self.raw_counts = self.raw_counts[wavelength_mask]
+                else:  # Continuous measurement
+                    self.raw_counts = self.raw_counts[wavelength_mask, :]
 
-        Button(trim_window, text="Apply", command=lambda: self.apply_trim_options([trim_option1, trim_option2])).pack(
-            pady=10)
+            # Apply mask to luminescence flux density if available
+            if self.contains_flux_flag and self.luminescence_flux_density is not None:
+                if self.luminescence_flux_density.ndim == 1:  # Single measurement
+                    self.luminescence_flux_density = self.luminescence_flux_density[wavelength_mask]
+                else:  # Continuous measurement
+                    self.luminescence_flux_density = self.luminescence_flux_density[wavelength_mask, :]
 
-    def open_filter_options_window(self):
+            # Update plots
+            self.update_raw_plot()
+
+            # Close filter window
+            filter_window.destroy()
+
+        except ValueError as e:
+            print(f"Invalid wavelength input: {e}")
+            messagebox.showerror("Error", "Please enter valid numerical values for wavelength range.")
+        except Exception as e:
+            print(f"An error occurred while applying the wavelength filter: {e}")
+            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+
+    def open_filter_wavelength_range_window(self):
+        """Open a filter window to specify the wavelength range."""
         filter_window = Toplevel(self.master)
-        filter_window.title("Filter Data Options")
+        filter_window.title("Filter by Wavelength Range")
 
-        Label(filter_window, text="Filter Data Options", font=("Arial", 14)).pack(pady=10)
+        # Add labels and entry fields
+        Label(filter_window, text="Min Wavelength (nm):", font=("Arial", 12)).pack(pady=5, anchor="w", padx=10)
+        min_wavelength_entry = Entry(filter_window, width=15)
+        min_wavelength_entry.pack(pady=5, anchor="w", padx=10)
 
-        # Add filter options here
-        filter_option1 = IntVar()
-        Checkbutton(filter_window, text="Filter Option 1", variable=filter_option1).pack(anchor="w")
-        Button(filter_window, text="Info", command=lambda: self.show_option_info("Filter Option 1 Info")).pack(
-            anchor="w")
+        Label(filter_window, text="Max Wavelength (nm):", font=("Arial", 12)).pack(pady=5, anchor="w", padx=10)
+        max_wavelength_entry = Entry(filter_window, width=15)
+        max_wavelength_entry.pack(pady=5, anchor="w", padx=10)
 
-        filter_option2 = IntVar()
-        Checkbutton(filter_window, text="Filter Option 2", variable=filter_option2).pack(anchor="w")
-        Button(filter_window, text="Info", command=lambda: self.show_option_info("Filter Option 2 Info")).pack(
-            anchor="w")
-
-        # Add more filter options as needed
-
+        # Add Apply button
         Button(filter_window, text="Apply",
-               command=lambda: self.apply_filter_options([filter_option1, filter_option2])).pack(pady=10)
+               command=lambda: self.apply_filter_by_wavelength_range(
+                   min_wavelength_entry.get(),
+                   max_wavelength_entry.get(),
+                   filter_window  # Pass the window reference to close it
+               )).pack(pady=10)
 
-    def show_option_info(self, info_text):
-        messagebox.showinfo("Option Info", info_text)
+        Button(filter_window, text="Info",
+               command=lambda: self.show_option_info("Filter by Wavelength Range")).pack(anchor="w")
 
-    def apply_trim_options(self, options):
-        # Apply the selected trim options to the data
-        for option in options:
-            if option.get():
-                print(f"Applying {option}...")  # Replace with actual logic
+    # Apply filter by intensity
+    def apply_filter_by_intensity_range(self, min_intensity, max_intensity, filter_window):
+        """Filters the data based on the provided intensity range."""
+        try:
+            # Default to full range if fields are empty
+            min_intensity = float(min_intensity) if min_intensity.strip() else float('-inf')
+            max_intensity = float(max_intensity) if max_intensity.strip() else float('inf')
+
+            print(f"Applying intensity filter with Min: {min_intensity}, Max: {max_intensity}")
+
+            # Initialize masks
+            raw_mask = np.ones_like(self.wavelength, dtype=bool)
+            flux_mask = np.ones_like(self.wavelength, dtype=bool)
+
+            # Apply filtering to raw counts if present
+            if self.contains_counts_flag and self.raw_counts is not None:
+                if self.is_single_measurement_flag:
+                    raw_mask = (self.raw_counts >= min_intensity) & (self.raw_counts <= max_intensity)
+                else:
+                    raw_mask = (self.raw_counts >= min_intensity) & (self.raw_counts <= max_intensity).any(axis=1)
+
+            # Apply filtering to luminescence flux density if present
+            if self.contains_flux_flag and self.luminescence_flux_density is not None:
+                if self.is_single_measurement_flag:
+                    flux_mask = (self.luminescence_flux_density >= min_intensity) & (
+                                self.luminescence_flux_density <= max_intensity)
+                else:
+                    flux_mask = (self.luminescence_flux_density >= min_intensity) & (
+                                self.luminescence_flux_density <= max_intensity).any(axis=1)
+
+            # Combine masks if both data types are present
+            combined_mask = raw_mask & flux_mask
+
+            # Apply the combined mask to raw counts, flux density, and wavelength
+            self.wavelength = self.wavelength[combined_mask]
+            if self.contains_counts_flag:
+                if self.is_single_measurement_flag:
+                    self.raw_counts = self.raw_counts[combined_mask]
+                else:
+                    self.raw_counts = self.raw_counts[combined_mask, :]
+
+            if self.contains_flux_flag:
+                if self.is_single_measurement_flag:
+                    self.luminescence_flux_density = self.luminescence_flux_density[combined_mask]
+                else:
+                    self.luminescence_flux_density = self.luminescence_flux_density[combined_mask, :]
+
+            # Update plots
+            self.update_raw_plot()
+
+            # Close filter window
+            filter_window.destroy()
+
+        except ValueError as e:
+            print(f"Invalid intensity input: {e}")
+            messagebox.showerror("Error", "Please enter valid numerical values for intensity range.")
+        except Exception as e:
+            print(f"An error occurred while applying the intensity filter: {e}")
+            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+
+    def apply_filter_by_intensity_range(self, min_intensity, max_intensity, filter_window):
+        try:
+            min_intensity = float(min_intensity) if min_intensity.strip() else float('-inf')
+            max_intensity = float(max_intensity) if max_intensity.strip() else float('inf')
+            print(f"Applying intensity filter with Min: {min_intensity}, Max: {max_intensity}")
+
+            mask = None
+
+            # Check and filter raw counts
+            if self.contains_counts_flag and self.raw_counts is not None:
+                if len(self.raw_counts.shape) == 2:  # Continuous measurement
+                    mask_raw = (self.raw_counts >= min_intensity) & (self.raw_counts <= max_intensity)
+                    mask = mask_raw.all(axis=1) if mask is None else mask & mask_raw.all(axis=1)
+                    self.raw_counts = self.raw_counts[mask]
+                else:  # Single measurement
+                    mask_raw = (self.raw_counts >= min_intensity) & (self.raw_counts <= max_intensity)
+                    mask = mask_raw if mask is None else mask & mask_raw
+                    self.raw_counts = self.raw_counts[mask]
+
+            # Check and filter luminescence flux density
+            if self.contains_flux_flag and self.luminescence_flux_density is not None:
+                if len(self.luminescence_flux_density.shape) == 2:  # Continuous measurement
+                    mask_flux = (self.luminescence_flux_density >= min_intensity) & (
+                                self.luminescence_flux_density <= max_intensity)
+                    mask = mask_flux.all(axis=1) if mask is None else mask & mask_flux.all(axis=1)
+                    self.luminescence_flux_density = self.luminescence_flux_density[mask]
+                else:  # Single measurement
+                    mask_flux = (self.luminescence_flux_density >= min_intensity) & (
+                                self.luminescence_flux_density <= max_intensity)
+                    mask = mask_flux if mask is None else mask & mask_flux
+                    self.luminescence_flux_density = self.luminescence_flux_density[mask]
+
+            # Apply the mask to the wavelength array
+            if mask is not None:
+                self.wavelength = self.wavelength[mask]
+
+            # Close the filter window and update the plots
+            filter_window.destroy()
+            self.update_raw_plot()
+
+        except Exception as e:
+            print(f"An error occurred while applying the intensity filter: {e}")
+
+    def open_filter_by_intensity_range_window(self):
+        """Opens a window to set intensity filter range."""
+        filter_window = Toplevel(self.master)
+        filter_window.title("Filter by Intensity Range")
+
+        Label(filter_window, text="Set Intensity Range:", font=("Arial", 12)).pack(pady=10)
+
+        # Input fields for min and max intensity
+        Label(filter_window, text="Min Intensity:").pack(anchor="w", padx=10)
+        min_intensity_entry = Entry(filter_window, width=15)
+        min_intensity_entry.pack(anchor="w", padx=10)
+
+        Label(filter_window, text="Max Intensity:").pack(anchor="w", padx=10)
+        max_intensity_entry = Entry(filter_window, width=15)
+        max_intensity_entry.pack(anchor="w", padx=10)
+
+        # Apply button
+        Button(filter_window, text="Apply",
+               command=lambda: self.apply_filter_by_intensity_range(
+                   min_intensity_entry.get(),
+                   max_intensity_entry.get(),
+                   filter_window
+               )).pack(pady=10)
+
+        Button(filter_window, text="Info",
+               command=lambda: self.show_option_info("Filter by Intensity Threshold")).pack(anchor="w")
+
+    # Apply filter by moving average
+    def apply_filter_by_moving_average(self, window_size, filter_window):
+        if self.raw_counts is not None:
+            self.raw_counts = np.apply_along_axis(
+                lambda m: np.convolve(m, np.ones(window_size) / window_size, mode='valid'),
+                axis=0, arr=self.raw_counts
+            )
+            self.wavelength = self.wavelength[:len(self.raw_counts)]
+        if self.luminescence_flux_density is not None:
+            self.luminescence_flux_density = np.apply_along_axis(
+                lambda m: np.convolve(m, np.ones(window_size) / window_size, mode='valid'),
+                axis=0, arr=self.luminescence_flux_density
+            )
+            self.wavelength = self.wavelength[:len(self.luminescence_flux_density)]
+
+        filter_window.destroy()  # Close the filter window
         self.update_raw_plot()
 
-    def apply_filter_options(self, options):
-        # Apply the selected filter options to the data
-        for option in options:
-            if option.get():
-                print(f"Applying {option}...")  # Replace with actual logic
+    def open_filter_by_moving_average_window(self):
+        filter_window = Toplevel(self.master)
+        filter_window.title("Filter by Moving Average")
+
+        Label(filter_window, text="Enter Window Size:", font=("Arial", 12)).pack(pady=10)
+        window_size_entry = Entry(filter_window, width=10)
+        window_size_entry.pack(padx=10)
+
+        Button(filter_window, text="Apply",
+               command=lambda: self.apply_filter_by_moving_average(
+                   int(window_size_entry.get()), filter_window)
+               ).pack(pady=10)
+
+        Button(filter_window, text="Info",
+               command=lambda: self.show_option_info("Filter by Moving Average")).pack(anchor="w")
+
+    def reset_filters(self):
+        # Initialize attributes
+        self.raw_counts = None
+        self.luminescence_flux_density = None
+        self.contains_counts_flag = False
+        self.contains_flux_flag = False
+        self.is_single_measurement_flag = None
+
+        try:
+            self.wavelength = self.data.iloc[:, 0].values
+
+            # Determine the available columns
+            columns = self.headers.columns[1:].tolist()
+            # Convert columns to lowercase for case-insensitive comparison
+            columns_lower = [col.lower() for col in columns]
+            print("Columns:", columns)
+
+        # Check for flux density column
+        if any('flux' in col and 'density' in col for col in columns_lower):
+            matching_col_flux = next(col for col in columns if col.lower() in columns_lower)
+            col_index_flux = columns.index(matching_col_flux) + 1  # +1 because wavelength is first column
+            if self.is_single_measurement_flag:
+                self.luminescence_flux_density = self.data.iloc[:, col_index_flux:].values  # Store as 1D array
+            else:
+                self.luminescence_flux_density = self.data.iloc[:, col_index_flux:].values  # Store as 2D array
+            self.contains_flux_flag = True
+            print(f"Luminescence flux density loaded from column: {matching_col_flux}")
+
+        # Check for raw counts column
+        if any('raw' in col and 'counts' in col for col in columns_lower):
+            matching_col_raw = next(col for col in columns if col.lower() in columns_lower)
+            if self.contains_flux_flag == True:
+                col_index_raw = columns.index(
+                    matching_col_raw) + 2  # +2 because wavelength is first column and flux second
+            else:
+                col_index_raw = columns.index(matching_col_raw) + 1  # +1 because wavelength is first column
+            if self.is_single_measurement_flag:
+                self.raw_counts = self.data.iloc[:, col_index_raw:].values  # Store as 1D array
+            else:
+                self.raw_counts = self.data.iloc[:, col_index_raw:].values  # Store as 2D array
+            self.contains_counts_flag = True
+            print(f"Raw counts loaded from column: {matching_col_raw}")
         self.update_raw_plot()
 
     def show_metadata(self):
-        """Display metadata in a new scrollable window."""
         if not self.file_path:
             messagebox.showinfo("No File Loaded", "Please load a file to view its metadata.")
             return
@@ -525,41 +759,26 @@ class PLAnalysisApp:
         Button(save_window, text="Save", command=lambda: self.save_plots(save_window)).grid(row=10, column=1, columnspan=2, pady=10)
 
     def save_plots(self, save_window):
-        # Check if the required data is available before attempting to save the plots
-        if self.plot_spectra_var.get() and (self.raw_counts is None or self.raw_counts.size == 0):
-            messagebox.showerror("Error", "No raw data available. Please deselect 'Raw PL Spectra / Log Raw PL Spectra'.")
-            return
-        elif self.plot_luminescence_flux_density_var.get() and (
-                self.luminescence_flux_density is None or self.luminescence_flux_density.size == 0):
-            messagebox.showerror("Error", "No flux density data available. Please deselect 'Luminescence Flux Density / Log Luminescence Flux Density'.")
-            return
-        elif self.is_single_measurement_flag_var.get() == True:
-            messagebox.showerror("Error", "Not a continous measurement, no Gradient or relative Change data available. Please deselect all the related plots.")
-            return
-
-        else:
-            return
-
         save_window.destroy()
         save_dir = filedialog.askdirectory(title="Select Save Directory")
         if not save_dir:
             return
 
-        if self.save_raw_var.get():
+        if self.save_raw_var.get() and self.contains_counts_flag:
             self.save_plot(self.plot_spectra, save_dir, self.save_names["Raw Data"].get())
-        if self.save_luminescence_flux_density_var.get():
-            self.save_plot(self.plot_luminescence_flux_density, save_dir, self.save_names["Flux Density"].get())
-        if self.save_absolute_gradient_var.get():
+        if self.save_luminescence_flux_density_var.get() and self.contains_flux_flag:
+            self.save_plot(self.plot_luminescence_flux_density, save_dir, self.save_names["Luminescence Flux Density"].get())
+        if self.save_absolute_gradient_var.get() and not self.is_single_measurement_flag:
             self.save_plot(self.plot_absolute_gradient, save_dir, self.save_names["Absolute Gradient"].get())
-        if self.save_relative_change_var.get():
+        if self.save_relative_change_var.get() and not self.is_single_measurement_flag:
             self.save_plot(self.plot_relative_change, save_dir, self.save_names["Relative Change"].get())
-        if self.save_log_spectra_var.get():
+        if self.save_log_spectra_var.get() and self.contains_counts_flag:
             self.save_plot(self.plot_log_spectra, save_dir, self.save_names["Log Spectra"].get())
-        if self.save_log_luminescence_flux_density_var.get():
-            self.save_plot(self.plot_log_luminescence_flux_density, save_dir, self.save_names["Log Flux Density"].get())
-        if self.save_log_absolute_gradient_var.get():
+        if self.save_log_luminescence_flux_density_var.get() and self.contains_flux_flag:
+            self.save_plot(self.plot_log_luminescence_flux_density, save_dir, self.save_names["Log Luminescence Flux Density"].get())
+        if self.save_log_absolute_gradient_var.get() and not self.is_single_measurement_flag:
             self.save_plot(self.plot_log_absolute_gradient, save_dir, self.save_names["Log Absolute Gradient"].get())
-        if self.save_log_relative_change_var.get():
+        if self.save_log_relative_change_var.get() and not self.is_single_measurement_flag:
             self.save_plot(self.plot_log_relative_change, save_dir, self.save_names["Log Relative Change"].get())
         if self.save_combined_var.get():
             self.save_combined_plot(save_dir)
@@ -727,8 +946,11 @@ class PLAnalysisApp:
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
-        for idx, i in enumerate(selected_indices):
-            ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"Time {i}")
+        if self.is_single_measurement_flag:
+            ax.plot(self.wavelength, self.raw_counts[:, 0], color="blue", label="Data")
+        else:
+            for idx, i in enumerate(selected_indices):
+                ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"Time {i}")
 
         if self.show_legend_var.get():
             ax.legend()
@@ -746,8 +968,11 @@ class PLAnalysisApp:
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
-        for idx, i in enumerate(selected_indices):
-            ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"Time {i}")
+        if self.is_single_measurement_flag:
+            ax.plot(self.wavelength, self.luminescence_flux_density[:, 0], color="green", label="Data")
+        else:
+            for idx, i in enumerate(selected_indices):
+                ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"Time {i}")
 
         if self.show_legend_var.get():
             ax.legend()
@@ -765,8 +990,11 @@ class PLAnalysisApp:
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
-        for idx, i in enumerate(selected_indices):
-            ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"Time {i}")
+        if self.is_single_measurement_flag:
+            ax.plot(self.wavelength, self.luminescence_flux_density[:, 0], color="green", label="Data")
+        else:
+            for idx, i in enumerate(selected_indices):
+                ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"Time {i}")
 
         if self.show_legend_var.get():
             ax.legend()
@@ -785,8 +1013,11 @@ class PLAnalysisApp:
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
         colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
-        for idx, i in enumerate(selected_indices):
-            ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"Time {i}")
+        if self.is_single_measurement_flag:
+            ax.plot(self.wavelength, self.raw_counts[:, 0], color="blue", label="Data")
+        else:
+            for idx, i in enumerate(selected_indices):
+                ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"Time {i}")
 
         if self.show_legend_var.get():
             ax.legend()
