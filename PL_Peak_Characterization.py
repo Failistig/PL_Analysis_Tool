@@ -462,48 +462,113 @@ class PLAnalysisApp:
                command=lambda: self.show_option_info("Filter by Moving Average")).pack(anchor="w")
 
     def reset_filters(self):
-        # Initialize attributes
-        self.raw_counts = None
-        self.luminescence_flux_density = None
-        self.contains_counts_flag = False
-        self.contains_flux_flag = False
-        self.is_single_measurement_flag = None
+        if not self.file_path:
+            messagebox.showinfo("No File Loaded", "Please load a file to reset filters.")
+            return
+
+        # Ensure self.data and self.headers are not None
+        if self.data is None or self.headers is None:
+            messagebox.showerror("Error", "Data or headers not loaded correctly.")
+            return
 
         try:
+            # Reinitialize attributes
+            self.raw_counts = None
+            self.luminescence_flux_density = None
+            self.contains_counts_flag = False
+            self.contains_flux_flag = False
+            self.is_single_measurement_flag = None
+
+            # Reload wavelength data
             self.wavelength = self.data.iloc[:, 0].values
 
             # Determine the available columns
             columns = self.headers.columns[1:].tolist()
             # Convert columns to lowercase for case-insensitive comparison
             columns_lower = [col.lower() for col in columns]
-            print("Columns:", columns)
+            print("Columns:", columns)  # Debug print
 
-        # Check for flux density column
-        if any('flux' in col and 'density' in col for col in columns_lower):
-            matching_col_flux = next(col for col in columns if col.lower() in columns_lower)
-            col_index_flux = columns.index(matching_col_flux) + 1  # +1 because wavelength is first column
-            if self.is_single_measurement_flag:
-                self.luminescence_flux_density = self.data.iloc[:, col_index_flux:].values  # Store as 1D array
-            else:
-                self.luminescence_flux_density = self.data.iloc[:, col_index_flux:].values  # Store as 2D array
-            self.contains_flux_flag = True
-            print(f"Luminescence flux density loaded from column: {matching_col_flux}")
+            # Check for flux density column
+            if any('flux' in col and 'density' in col for col in columns_lower):
+                matching_col_flux = next(col for col in columns if col.lower() in columns_lower)
+                col_index_flux = columns.index(matching_col_flux) + 1  # +1 because wavelength is first column
+                if self.is_single_measurement_flag:
+                    self.luminescence_flux_density = self.data.iloc[:, col_index_flux:].values  # Store as 1D array
+                else:
+                    self.luminescence_flux_density = self.data.iloc[:, col_index_flux:].values  # Store as 2D array
+                self.contains_flux_flag = True
+                print(f"Luminescence flux density loaded from column: {matching_col_flux}")
 
-        # Check for raw counts column
-        if any('raw' in col and 'counts' in col for col in columns_lower):
-            matching_col_raw = next(col for col in columns if col.lower() in columns_lower)
-            if self.contains_flux_flag == True:
-                col_index_raw = columns.index(
-                    matching_col_raw) + 2  # +2 because wavelength is first column and flux second
-            else:
-                col_index_raw = columns.index(matching_col_raw) + 1  # +1 because wavelength is first column
-            if self.is_single_measurement_flag:
-                self.raw_counts = self.data.iloc[:, col_index_raw:].values  # Store as 1D array
-            else:
-                self.raw_counts = self.data.iloc[:, col_index_raw:].values  # Store as 2D array
-            self.contains_counts_flag = True
-            print(f"Raw counts loaded from column: {matching_col_raw}")
-        self.update_raw_plot()
+            # Check for raw counts column
+            if any('raw' in col and 'counts' in col for col in columns_lower):
+                matching_col_raw = next(col for col in columns if col.lower() in columns_lower)
+                if self.contains_flux_flag:
+                    col_index_raw = columns.index(
+                        matching_col_raw) + 2  # +2 because wavelength is first column and flux second
+                else:
+                    col_index_raw = columns.index(matching_col_raw) + 1  # +1 because wavelength is first column
+                if self.is_single_measurement_flag:
+                    self.raw_counts = self.data.iloc[:, col_index_raw:].values  # Store as 1D array
+                else:
+                    self.raw_counts = self.data.iloc[:, col_index_raw:].values  # Store as 2D array
+                self.contains_counts_flag = True
+                print(f"Raw counts loaded from column: {matching_col_raw}")
+
+            # Read the raw time labels from the file
+            with open(self.file_path, 'r') as file:
+                lines = file.readlines()
+                # For continuous measurements
+                if "\t" in lines[0]:  # First line contains tab-separated timestamps
+                    date = lines[0].strip().split("\t")[0]  # Extract date
+                    time = lines[0].strip().split("\t")[1]  # Extract time
+                    date_time_string = f"{date} {time}"
+                    date_time = datetime.strptime(date_time_string, "%d.%m.%Y %H:%M:%S")
+                else:  # For single measurements
+                    date_time_string = lines[0].strip()  # Use the first line as a single date-time string
+                    date_time = datetime.strptime(date_time_string, "%d.%m.%Y %H:%M:%S")
+
+                # Update the GUI date entry
+                self.date_entry.config(state='normal')
+                self.date_entry.delete(0, 'end')
+                self.date_entry.insert(0, date_time.strftime("%d.%m.%Y %H:%M:%S"))
+                self.date_entry.config(state='disabled')
+
+            if len(lines) > 0:
+                raw_time_labels = lines[0].strip().split("\t")[1:]
+                if len(raw_time_labels) > 1:
+                    self.relative_times = self.calculate_relative_times(raw_time_labels)
+                    self.is_single_measurement_flag = False
+                else:
+                    self.relative_times = []
+                    self.is_single_measurement_flag = True
+
+            self.setup_time_checkboxes()
+
+            # Determine if the file contains single or continuous measurements
+            self.is_single_measurement = (self.raw_counts is not None and self.raw_counts.ndim == 1) or (
+                    self.luminescence_flux_density is not None and self.luminescence_flux_density.ndim == 1)
+
+            # Add debug prints to check data shapes
+            print(f"Raw counts shape: {self.raw_counts.shape if self.raw_counts is not None else 'None'}")
+            print(
+                f"Luminescence flux density shape: {self.luminescence_flux_density.shape if self.luminescence_flux_density is not None else 'None'}")
+            print(f"contains_counts_flag: {self.contains_counts_flag}")
+            print(f"contains_flux_flag: {self.contains_flux_flag}")
+
+            self.update_raw_plot()
+
+        except pd.errors.EmptyDataError:
+            messagebox.showerror("Error", "Error loading file: No columns to parse from file")
+            self.data = None
+        except ValueError as e:
+            messagebox.showerror("Error", "Error loading file: {}".format(e))
+            self.data = None
+        except IndexError:
+            messagebox.showerror("Error", "Error parsing times: list index out of range")
+            self.data = None
+        except Exception as e:
+            messagebox.showerror("Error", "An unexpected error occurred: {}".format(e))
+            self.data = None
 
     def show_metadata(self):
         if not self.file_path:
@@ -950,7 +1015,7 @@ class PLAnalysisApp:
             ax.plot(self.wavelength, self.raw_counts[:, 0], color="blue", label="Data")
         else:
             for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"Time {i}")
+                ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"Time {self.relative_times[i]}")
 
         if self.show_legend_var.get():
             ax.legend()
@@ -972,7 +1037,7 @@ class PLAnalysisApp:
             ax.plot(self.wavelength, self.luminescence_flux_density[:, 0], color="green", label="Data")
         else:
             for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"Time {i}")
+                ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"Time {self.relative_times[i]}")
 
         if self.show_legend_var.get():
             ax.legend()
@@ -994,7 +1059,7 @@ class PLAnalysisApp:
             ax.plot(self.wavelength, self.luminescence_flux_density[:, 0], color="green", label="Data")
         else:
             for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"Time {i}")
+                ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"Time {self.relative_times[i]}")
 
         if self.show_legend_var.get():
             ax.legend()
@@ -1017,7 +1082,7 @@ class PLAnalysisApp:
             ax.plot(self.wavelength, self.raw_counts[:, 0], color="blue", label="Data")
         else:
             for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"Time {i}")
+                ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"Time {self.relative_times[i]}")
 
         if self.show_legend_var.get():
             ax.legend()
