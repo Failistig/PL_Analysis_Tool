@@ -1,4 +1,5 @@
 import pandas as pd
+import os
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import numpy as np
@@ -280,30 +281,30 @@ class PLAnalysisApp:
         print(f"Selected times (checkboxes): {selected_times}")
         print(f"QFLS times: {self.qfls_times}")
 
-        selected_qfls_data = []
-        selected_qfls_times = []
+        self.selected_qfls_data = []
+        self.selected_qfls_times = []
 
         # Match selected times with qfls_times based on values (not index)
         for i, qfls_time in enumerate(self.qfls_times):
             if qfls_time in selected_times:
-                selected_qfls_data.append(self.qfls_data[i])
-                selected_qfls_times.append(qfls_time)
+                self.selected_qfls_data.append(self.qfls_data[i])
+                self.selected_qfls_times.append(qfls_time)
 
         # If no data is found for the selected times, show a message
-        if not selected_qfls_data:
+        if not self.selected_qfls_data:
             ax.text(0.5, 0.5, "No matching QFLS data for selected times", ha='center', va='center', fontsize=12)
             print(f"No matching QFLS data for selected times: {selected_times}")
             return
 
         # Debugging: Print the selected data
-        print(f"Selected QFLS data: {selected_qfls_data}")
-        print(f"Selected QFLS times: {selected_qfls_times}")
+        print(f"Selected QFLS data: {self.selected_qfls_data}")
+        print(f"Selected QFLS times: {self.selected_qfls_times}")
 
         # Plot only the selected QFLS data
-        ax.plot(selected_qfls_times, selected_qfls_data, marker="o", linestyle="-", color="blue", label="QFLS")
+        ax.plot(self.selected_qfls_times, self.selected_qfls_data, marker="o", linestyle="-", color="blue", label="QFLS")
 
         # Use MaxNLocator to automatically adjust the number of ticks on x-axis
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True, prune='both', axis='x'))  # Adjust the number of x-ticks
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True, prune='both'))
 
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("QFLS (eV)")
@@ -312,36 +313,62 @@ class PLAnalysisApp:
         ax.grid(True)
 
     def open_qfls_window(self):
-        """Open a window to plot the QFLS extracted from the metadata via the iVoc."""
+        """Creates the window for displaying QFLS plot."""
+        if not self.qfls_data or not self.qfls_times:
+            messagebox.showwarning("No Data", "No QFLS data available to plot.")
+            return
 
-        # Check if the window is already open
-        if hasattr(self, 'qfls_window') and self.qfls_window.winfo_exists():
-            return  # Don't open it again if already open
+        # Create a new window
+        qfls_window = tk.Toplevel(self.master)
+        qfls_window.title("QFLS Plot")
 
-        # Create new window if it doesn't exist
-        self.qfls_window = Toplevel(self.master)
-        self.qfls_window.title("Quasi Fermi Level Splitting")
-
-        # Create Matplotlib figure
+        # Create a figure and canvas
         fig, ax = plt.subplots(figsize=(6, 4))
-
-        # Call the plotting function
         self.plot_qfls(ax)
 
-        # Embed plot in Tkinter window
-        canvas = FigureCanvasTkAgg(fig, master=self.qfls_window)
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-        # Add Matplotlib navigation toolbar for zoom, save, etc.
-        toolbar = NavigationToolbar2Tk(canvas, self.qfls_window)
-        toolbar.update()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-        # Draw the canvas
+        # Embed the plot inside the Tkinter window
+        canvas = FigureCanvasTkAgg(fig, master=qfls_window)
         canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        # Ensure the window is responsive to resizing and interaction
-        self.qfls_window.protocol("WM_DELETE_WINDOW", self.close_qfls_window)
+        # Button Frame
+        button_frame = tk.Frame(qfls_window)
+        button_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        def save_plot():
+            """Saves the plot to a file."""
+            file_path = filedialog.asksaveasfilename(defaultextension=".png",
+                                                     filetypes=[("PNG Image", "*.png"), ("JPG Image", "*.jpg")])
+            if file_path:
+                fig.savefig(file_path, dpi=300)
+                print(f"Plot saved as {file_path}")
+
+        def save_data():
+            """Saves the QFLS data to a text file."""
+            if not hasattr(self, "selected_qfls_times") or not hasattr(self, "selected_qfls_data"):
+                messagebox.showerror("Error", "No QFLS data selected to save!")
+                return
+
+            file_path = filedialog.asksaveasfilename(defaultextension=".txt",
+                                                     filetypes=[("Text Files", "*.txt")])
+            if not file_path:
+                return  # User canceled the file save
+
+            try:
+                with open(file_path, "w") as file:
+                    file.write("Time (s)\tQFLS (eV)\n")
+                    for time, qfls in zip(self.selected_qfls_times, self.selected_qfls_data):
+                        file.write(f"{time}\t{qfls}\n")
+                messagebox.showinfo("Success", "QFLS data saved successfully!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save data: {e}")
+
+        # Buttons
+        save_plot_btn = Button(button_frame, text="Save Plot", command=save_plot)
+        save_plot_btn.pack(side=tk.LEFT, padx=5, pady=5)
+
+        save_data_btn = Button(button_frame, text="Save Data", command=save_data)
+        save_data_btn.pack(side=tk.RIGHT, padx=5, pady=5)
 
     def close_qfls_window(self):
         """Handle window closure to clean up and prevent multiple windows."""
