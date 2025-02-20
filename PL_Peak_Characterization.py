@@ -1,6 +1,8 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
+import tkinter as tk
 from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel, StringVar, messagebox, Text
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image, ImageTk
@@ -131,8 +133,6 @@ class PLAnalysisApp:
         # Buttons Section
         Button(self.scrollable_frame, text="Save Plots", width=15, command=self.save_plots_dialog).grid(row=2, column=0, padx=10, pady=5, sticky="w")
         Button(self.scrollable_frame, text="Plot All", width=15, command=self.plot_in_window).grid(row=2, column=1, pady=5, sticky="w")
-        #Button(self.scrollable_frame, text="Evaluation Options", width=15, command=self.open_evaluation_window).grid(row=2, column=3, padx=10, pady=5, sticky="w")
-        #Button(self.scrollable_frame, text="Customize Plots", width=15, command=self.open_customization_window).grid(row=2, column=2, padx=10, pady=5, sticky="w")
 
         # Plot Selection
         Label(self.scrollable_frame, text="Select Plots:").grid(row=3, column=0, pady=5, sticky="w", padx=10)
@@ -159,11 +159,16 @@ class PLAnalysisApp:
         # Reset Filter Button
         Button(self.scrollable_frame, text="Reset Filter", width=20, command=self.reset_filters).grid(row=4, column=2, sticky="w")
 
+        Button(self.scrollable_frame, text="QFLS", width=15, command=self.open_qfls_window).grid(row=4, column=3, padx=10, pady=5, sticky="w")
+        #Button(self.scrollable_frame, text="Gaussian", width=15, command=self.open_customization_window).grid(row=5, column=3, padx=10, pady=5, sticky="w")
+        #Button(self.scrollable_frame, text="Double Gaussian", width=15, command=self.open_evaluation_window).grid(row=6, column=3, padx=10, pady=5, sticky="w")
+        #Button(self.scrollable_frame, text="Halide Segregation", width=15, command=self.open_customization_window).grid(row=7, column=3, padx=10, pady=5, sticky="w")
+        #Button(self.scrollable_frame, text="Customize Plots", width=15, command=self.open_customization_window).grid(row=8, column=3, padx=10, pady=5, sticky="w")
+
         # Info Buttons
-        Button(self.scrollable_frame, text="Info: Spectra", width=20, anchor="w", command=lambda: self.show_info("Spectra")).grid(row=4, column=3, sticky="w")
-        Button(self.scrollable_frame, text="Info: Flux Density", width=20, anchor="w", command=lambda: self.show_info("Flux Density")).grid(row=5, column=3, sticky="w")
-        Button(self.scrollable_frame, text="Info: Absolute Gradient", width=20, anchor="w", command=lambda: self.show_info("Absolute Gradient")).grid(row=6, column=3, sticky="w")
-        Button(self.scrollable_frame, text="Info: Relative Change", width=20, anchor="w", command=lambda: self.show_info("Relative Change")).grid(row=7, column=3, sticky="w")
+        Button(self.scrollable_frame, text="Info: Spectra", width=20, anchor="w", command=lambda: self.show_info("Spectra")).grid(row=4, column=4, sticky="w")
+        Button(self.scrollable_frame, text="Info: Flux Density", width=20, anchor="w", command=lambda: self.show_info("Flux Density")).grid(row=5, column=4, sticky="w")
+        Button(self.scrollable_frame, text="Info: Absolute Gradient", width=20, anchor="w", command=lambda: self.show_info("Absolute Gradient")).grid(row=6, column=4, sticky="w")
 
         # Legend Toggle
         Checkbutton(self.scrollable_frame, text="Show Legend", variable=self.show_legend_var).grid(row=8, column=1, sticky="w")
@@ -194,7 +199,6 @@ class PLAnalysisApp:
         except Exception as e:
             print(f"Error loading logo: {e}")
 
-    # Show info for filter options
     def show_option_info(self, filter_type):
         info_messages = {
             "Filter by Wavelength Range": (
@@ -219,7 +223,6 @@ class PLAnalysisApp:
         }
         messagebox.showinfo("Filter Info", info_messages.get(filter_type, "No information available."))
 
-    # Apply filter by wavelength range
     def apply_filter_by_wavelength_range(self, min_wavelength, max_wavelength, filter_window):
         """Filters the data based on the provided wavelength range."""
         try:
@@ -261,6 +264,90 @@ class PLAnalysisApp:
         except Exception as e:
             print(f"An error occurred while applying the wavelength filter: {e}")
             messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+
+    def plot_qfls(self, ax):
+        """Plots QFLS extracted from iVoc values with confidence = 1 based on selected time checkboxes."""
+        ax.clear()  # Clear previous plot
+
+        if not self.qfls_times or not self.qfls_data:
+            ax.text(0.5, 0.5, "No data available", ha='center', va='center', fontsize=12)
+            return
+
+        # Get the selected times from the checkboxes
+        selected_times = [self.relative_times[i] for var, i in self.time_checkboxes if var.get() == 1]
+
+        # Debugging: Print selected times and qfls_times
+        print(f"Selected times (checkboxes): {selected_times}")
+        print(f"QFLS times: {self.qfls_times}")
+
+        selected_qfls_data = []
+        selected_qfls_times = []
+
+        # Match selected times with qfls_times based on values (not index)
+        for i, qfls_time in enumerate(self.qfls_times):
+            if qfls_time in selected_times:
+                selected_qfls_data.append(self.qfls_data[i])
+                selected_qfls_times.append(qfls_time)
+
+        # If no data is found for the selected times, show a message
+        if not selected_qfls_data:
+            ax.text(0.5, 0.5, "No matching QFLS data for selected times", ha='center', va='center', fontsize=12)
+            print(f"No matching QFLS data for selected times: {selected_times}")
+            return
+
+        # Debugging: Print the selected data
+        print(f"Selected QFLS data: {selected_qfls_data}")
+        print(f"Selected QFLS times: {selected_qfls_times}")
+
+        # Plot only the selected QFLS data
+        ax.plot(selected_qfls_times, selected_qfls_data, marker="o", linestyle="-", color="blue", label="QFLS")
+
+        # Use MaxNLocator to automatically adjust the number of ticks on x-axis
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True, prune='both', axis='x'))  # Adjust the number of x-ticks
+
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("QFLS (eV)")
+        ax.set_title("Quasi Fermi Level Splitting Over Time")
+        ax.legend()
+        ax.grid(True)
+
+    def open_qfls_window(self):
+        """Open a window to plot the QFLS extracted from the metadata via the iVoc."""
+
+        # Check if the window is already open
+        if hasattr(self, 'qfls_window') and self.qfls_window.winfo_exists():
+            return  # Don't open it again if already open
+
+        # Create new window if it doesn't exist
+        self.qfls_window = Toplevel(self.master)
+        self.qfls_window.title("Quasi Fermi Level Splitting")
+
+        # Create Matplotlib figure
+        fig, ax = plt.subplots(figsize=(6, 4))
+
+        # Call the plotting function
+        self.plot_qfls(ax)
+
+        # Embed plot in Tkinter window
+        canvas = FigureCanvasTkAgg(fig, master=self.qfls_window)
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # Add Matplotlib navigation toolbar for zoom, save, etc.
+        toolbar = NavigationToolbar2Tk(canvas, self.qfls_window)
+        toolbar.update()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # Draw the canvas
+        canvas.draw()
+
+        # Ensure the window is responsive to resizing and interaction
+        self.qfls_window.protocol("WM_DELETE_WINDOW", self.close_qfls_window)
+
+    def close_qfls_window(self):
+        """Handle window closure to clean up and prevent multiple windows."""
+        if hasattr(self, 'qfls_window'):
+            self.qfls_window.destroy()
+            del self.qfls_window
 
     def open_filter_wavelength_range_window(self):
         """Open a filter window to specify the wavelength range."""
@@ -357,7 +444,6 @@ class PLAnalysisApp:
         Button(filter_window, text="Info",
                command=lambda: self.show_option_info("Filter by Intensity Threshold")).pack(anchor="w")
 
-    # Apply filter by moving average
     def apply_filter_by_moving_average(self, window_size, filter_window):
         if self.raw_counts is not None:
             self.raw_counts = np.apply_along_axis(
@@ -556,13 +642,82 @@ class PLAnalysisApp:
         self.contains_counts_flag = False
         self.contains_flux_flag = False
         self.is_single_measurement_flag = None
+        self.qfls_data = []
+        self.qfls_times = []
 
         # Scan the file to find the header line
         header_line = "Wavelength (nm)"
         skip_rows = 0
+        encoding_used = 'utf-8'  # Default encoding
 
+        # Read file as raw text first to extract metadata
+        ivoc_values, ivoc_confidence = None, None
+
+        try:
+            with open(self.file_path, 'r', encoding='utf-8') as file:
+                lines = file.readlines()
+        except UnicodeDecodeError:
+            with open(self.file_path, 'r', encoding='ISO-8859-1') as file:
+                lines = file.readlines()
+            encoding_used = 'ISO-8859-1'
+
+        # Extract the first timestamp from metadata
+        if len(lines) > 0:
+            raw_time_labels = lines[0].strip().split("\t")[1:]  # Extract all timestamps from the first line
+
+            if len(raw_time_labels) > 0:
+                first_time_str = raw_time_labels[0]  # The first timestamp in the metadata
+
+                # Determine the correct time format
+                if " " in first_time_str:
+                    time_format = "%d.%m.%Y %H:%M:%S"
+                else:
+                    time_format = "%H:%M:%S"
+
+                try:
+                    first_time = datetime.strptime(first_time_str, time_format)
+                    # Update the timestamp entry box
+                    self.date_entry.config(state='normal')
+                    self.date_entry.delete(0, 'end')
+                    self.date_entry.insert(0, first_time.strftime("%d.%m.%Y %H:%M:%S"))
+                    self.date_entry.config(state='disabled')
+                except ValueError:
+                    print(f"Error: Unable to parse first timestamp '{first_time_str}'")
+
+        # Extract iVoc and iVoc confidence
+        for line in lines:
+            if line.startswith("iVoc (V)"):
+                ivoc_values = line.strip().split("\t")[1:]  # Skip the label
+            elif line.startswith("iVoc confidence"):
+                ivoc_confidence = line.strip().split("\t")[1:]
+
+        # Convert values and filter by confidence
+        if ivoc_values and ivoc_confidence:
+            ivoc_values = [float(val) if val.replace('.', '', 1).isdigit() else np.nan for val in ivoc_values]
+            ivoc_confidence = [int(float(val)) if val.replace('.', '', 1).isdigit() else 0 for val in ivoc_confidence]
+
+            # Compute QFLS only for valid iVoc values where confidence is 1
+            self.qfls_data = [ivoc_values[i] for i in range(len(ivoc_values)) if ivoc_confidence[i] == 1]
+
+            # Use relative times for valid data
+            if raw_time_labels:
+                self.relative_times = self.calculate_relative_times(raw_time_labels)
+                if self.relative_times is not None:
+                    self.qfls_times = [self.relative_times[i] for i in range(len(ivoc_values)) if
+                                       ivoc_confidence[i] == 1]
+                else:
+                    print("Error: Unable to calculate relative times.")
+            else:
+                print("Error: No raw time labels found.")
+
+            print(f"Extracted {len(self.qfls_data)} QFLS values with confidence 1")
+        else:
+            print("Warning: No valid iVoc (QFLS) data found with confidence 1")
+
+        # Now read the main spectral data
         def read_file_with_encoding(encoding):
-            nonlocal skip_rows
+            nonlocal skip_rows, encoding_used
+            encoding_used = encoding
             with open(self.file_path, 'r', encoding=encoding) as file:
                 for line in file:
                     if header_line in line:
@@ -573,100 +728,76 @@ class PLAnalysisApp:
             self.headers = pd.read_csv(self.file_path, sep="\t", skiprows=skip_rows, encoding=encoding)
 
         try:
-            # Try reading the file with UTF-8 encoding first
-            read_file_with_encoding('utf-8')
-        except UnicodeDecodeError:
-            # If UTF-8 fails, try reading the file with ISO-8859-1 encoding
-            skip_rows = 0
-            read_file_with_encoding('ISO-8859-1')
-
-        try:
-            self.wavelength = self.data.iloc[:, 0].values
-
-            # Determine the available columns
-            columns = self.headers.columns[1:].tolist()
-            # Convert columns to lowercase for case-insensitive comparison
-            columns_lower = [col.lower() for col in columns]
-            print("Columns:", columns)  # Debug print
-
-            # Check for flux density column
-            if any('flux' in col and 'density' in col for col in columns_lower):
-                matching_col_flux = next(col for col in columns if col.lower() in columns_lower)
-                col_index_flux = columns.index(matching_col_flux) + 1  # +1 because wavelength is first column
-                if self.is_single_measurement_flag:
-                    self.luminescence_flux_density = self.data.iloc[:, col_index_flux:].values  # Store as 1D array
-                else:
-                    self.luminescence_flux_density = self.data.iloc[:, col_index_flux:].values  # Store as 2D array
-                self.contains_flux_flag = True
-                print(f"Luminescence flux density loaded from column: {matching_col_flux}")
-
-            # Check for raw counts column
-            if any('raw' in col and 'counts' in col for col in columns_lower):
-                matching_col_raw = next(col for col in columns if col.lower() in columns_lower)
-                if self.contains_flux_flag == True:
-                    col_index_raw = columns.index(
-                        matching_col_raw) + 2  # +2 because wavelength is first column and flux second
-                else:
-                    col_index_raw = columns.index(matching_col_raw) + 1  # +1 because wavelength is first column
-                if self.is_single_measurement_flag:
-                    self.raw_counts = self.data.iloc[:, col_index_raw:].values  # Store as 1D array
-                else:
-                    self.raw_counts = self.data.iloc[:, col_index_raw:].values  # Store as 2D array
-                self.contains_counts_flag = True
-                print(f"Raw counts loaded from column: {matching_col_raw}")
-
-            # Read the raw time labels from the file
-            with open(self.file_path, 'r') as file:
-                lines = file.readlines()
-                # For continuous measurements
-                if "\t" in lines[0]:  # First line contains tab-separated timestamps
-                    date = lines[0].strip().split("\t")[0]  # Extract date
-                    time = lines[0].strip().split("\t")[1]  # Extract time
-                    date_time_string = f"{date} {time}"
-                    date_time = datetime.strptime(date_time_string, "%d.%m.%Y %H:%M:%S")
-                else:  # For single measurements
-                    date_time_string = lines[0].strip()  # Use the first line as a single date-time string
-                    date_time = datetime.strptime(date_time_string, "%d.%m.%Y %H:%M:%S")
-
-                # Update the GUI date entry
-                self.date_entry.config(state='normal')
-                self.date_entry.delete(0, 'end')
-                self.date_entry.insert(0, date_time.strftime("%d.%m.%Y %H:%M:%S"))
-                self.date_entry.config(state='disabled')
-
-            if len(lines) > 0:
-                raw_time_labels = lines[0].strip().split("\t")[1:]
-                if len(raw_time_labels) > 1:
-                    self.relative_times = self.calculate_relative_times(raw_time_labels)
-                    self.is_single_measurement_flag = False
-                else:
-                    self.relative_times = []
-                    self.is_single_measurement_flag = True
-
-            self.setup_time_checkboxes()
-
-            # Determine if the file contains single or continuous measurements
-            self.is_single_measurement = (self.raw_counts is not None and self.raw_counts.ndim == 1) or (
-                    self.luminescence_flux_density is not None and self.luminescence_flux_density.ndim == 1)
-
-            # Add debug prints to check data shapes
-            print(f"Raw counts shape: {self.raw_counts.shape if self.raw_counts is not None else 'None'}")
-            print( f"Luminescence flux density shape: {self.luminescence_flux_density.shape if self.luminescence_flux_density is not None else 'None'}")
-            print(f"contains_counts_flag: {self.contains_counts_flag}")
-            print(f"contains_flux_flag: {self.contains_flux_flag}")
-
-        except pd.errors.EmptyDataError:
-            messagebox.showerror("Error", "Error loading file: No columns to parse from file")
-            self.data = None
-        except ValueError as e:
-            messagebox.showerror("Error", "Error loading file: {}".format(e))
-            self.data = None
-        except IndexError:
-            messagebox.showerror("Error", "Error parsing times: list index out of range")
-            self.data = None
+            read_file_with_encoding(encoding_used)
         except Exception as e:
-            messagebox.showerror("Error", "An unexpected error occurred: {}".format(e))
-            self.data = None
+            messagebox.showerror("Error", f"Error reading spectral data: {e}")
+            return
+
+        # Fix column headers if needed
+        if "Unnamed" in self.headers.columns[0]:
+            self.headers.columns = self.data.columns  # Try fixing headers
+
+        self.wavelength = self.data.iloc[:, 0].values
+        columns = self.headers.columns[1:].tolist()
+        columns_lower = [col.lower() for col in columns]
+
+        # Extract other data (Flux density, raw counts, etc.)
+        if any('flux' in col and 'density' in col for col in columns_lower):
+            matching_col_flux = next(col for col in columns if col.lower() in columns_lower)
+            col_index_flux = columns.index(matching_col_flux) + 1
+            self.luminescence_flux_density = self.data.iloc[:, col_index_flux:].values
+            self.contains_flux_flag = True
+            print(f"Luminescence flux density loaded from column: {matching_col_flux}")
+
+        if any('raw' in col and 'counts' in col for col in columns_lower):
+            matching_col_raw = next(col for col in columns if col.lower() in columns_lower)
+            col_index_raw = columns.index(matching_col_raw) + (2 if self.contains_flux_flag else 1)
+            self.raw_counts = self.data.iloc[:, col_index_raw:].values
+            self.contains_counts_flag = True
+            print(f"Raw counts loaded from column: {matching_col_raw}")
+
+        # Read the raw time labels from the file
+        with open(self.file_path, 'r') as file:
+            lines = file.readlines()
+            # For continuous measurements
+            if "\t" in lines[0]:  # First line contains tab-separated timestamps
+                date = lines[0].strip().split("\t")[0]  # Extract date
+                time = lines[0].strip().split("\t")[1]  # Extract time
+                date_time_string = f"{date} {time}"
+                date_time = datetime.strptime(date_time_string, "%d.%m.%Y %H:%M:%S")
+            else:  # For single measurements
+                date_time_string = lines[0].strip()  # Use the first line as a single date-time string
+                date_time = datetime.strptime(date_time_string, "%d.%m.%Y %H:%M:%S")
+
+            # Update the GUI date entry
+            self.date_entry.config(state='normal')
+            self.date_entry.delete(0, 'end')
+            self.date_entry.insert(0, date_time.strftime("%d.%m.%Y %H:%M:%S"))
+            self.date_entry.config(state='disabled')
+
+        # Check if relative times can be calculated
+        if len(lines) > 0:
+            raw_time_labels = lines[0].strip().split("\t")[1:]  # Extract all timestamps from the first line
+            if len(raw_time_labels) > 1:
+                self.relative_times = self.calculate_relative_times(raw_time_labels)
+                self.is_single_measurement_flag = False
+            else:
+                self.relative_times = []
+                self.is_single_measurement_flag = True
+
+        self.setup_time_checkboxes()
+
+        self.is_single_measurement = (
+                (self.raw_counts is not None and self.raw_counts.ndim == 1) or
+                (self.luminescence_flux_density is not None and self.luminescence_flux_density.ndim == 1)
+        )
+
+        # Debug prints
+        print(f"Raw counts shape: {self.raw_counts.shape if self.raw_counts is not None else 'None'}")
+        print(
+            f"Luminescence flux density shape: {self.luminescence_flux_density.shape if self.luminescence_flux_density is not None else 'None'}")
+        print(f"contains_counts_flag: {self.contains_counts_flag}")
+        print(f"contains_flux_flag: {self.contains_flux_flag}")
 
     def calculate_relative_times(self, raw_times):
         # Check if it's a single measurement first
