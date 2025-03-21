@@ -1,22 +1,65 @@
-import pandas as pd
-import os
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
-import numpy as np
 import tkinter as tk
-from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel, StringVar, messagebox, Text
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel, StringVar, messagebox, Text, Scrollbar, Canvas, OptionMenu
+from tkinter.simpledialog import askstring
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image, ImageTk
 from datetime import datetime
-from tkinter import Scrollbar, Canvas
 from scipy.optimize import curve_fit
+from matplotlib.ticker import MaxNLocator
 
-# Define Gaussian functions for fitting
-def gaussian(x, a, mu, sigma):
-    return a * np.exp(-((x - mu)**2) / (2 * sigma**2))
 
-def double_gaussian(x, a1, mu1, sigma1, a2, mu2, sigma2):
-    return gaussian(x, a1, mu1, sigma1) + gaussian(x, a2, mu2, sigma2)
+#####################
+# Fitting Functions #
+#####################
+
+def gaussian(x, A, mu, sigma):
+    return A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
+
+def double_gaussian(x, A1, mu1, sigma1, f, delta, r):
+    """
+    Constrained double Gaussian model:
+      Second peak parameters are linked to the first:
+      A2 = A1 * f,  mu2 = mu1 + delta, sigma2 = sigma1 * r
+    """
+    A2 = A1 * f
+    mu2 = mu1 + delta
+    sigma2 = sigma1 * r
+    return gaussian(x, A1, mu1, sigma1) + gaussian(x, A2, mu2, sigma2)
+
+def sum_of_two_gaussians(x, A1, mu1, sigma1, A2, mu2, sigma2):
+    """Sum of two independent Gaussian functions."""
+    return gaussian(x, A1, mu1, sigma1) + gaussian(x, A2, mu2, sigma2)
+
+def Multi_Gaussfit(x, y, max_gaussians=5):
+    """
+    Iteratively fits up to max_gaussians to the data and sums them.
+    Returns the total fit and a list of parameters for each Gaussian.
+    """
+    residual = np.copy(y)
+    total_fit = np.zeros_like(y)
+    params_list = []
+    for _ in range(max_gaussians):
+        try:
+            # Estimate initial guess: amplitude, peak, sigma
+            A0 = np.nanmax(residual)
+            mu0 = x[np.argmax(residual)]
+            sigma0 = (x[-1] - x[0]) / 6
+            p0 = [A0, mu0, sigma0]
+            popt, _ = curve_fit(gaussian, x, residual, p0=p0, maxfev=10000)
+            fit_component = gaussian(x, *popt)
+            total_fit += fit_component
+            params_list.append(popt)
+            residual = residual - fit_component
+            # Stop if residual is very low
+            if np.nanmax(residual) < 0.05 * A0:
+                break
+        except Exception as e:
+            print(f"Multi-Gauss fit iteration failed: {e}")
+            break
+    return total_fit, params_list
 
 class PLAnalysisApp:
     def __init__(self, master):
@@ -24,26 +67,18 @@ class PLAnalysisApp:
         self.master.title("PL Analysis Tool")
         self.master.geometry("1920x1080")
 
-        # Create a canvas and a frame to hold the widgets
+        # Create a canvas and a scrollable frame
         self.canvas = Canvas(master)
         self.scrollable_frame = Frame(self.canvas)
-
-        # Add scrollbars
         self.v_scrollbar = Scrollbar(master, orient="vertical", command=self.canvas.yview)
         self.h_scrollbar = Scrollbar(master, orient="horizontal", command=self.canvas.xview)
-
-        self.canvas.configure(yscrollcommand=self.v_scrollbar.set)
-        self.canvas.configure(xscrollcommand=self.h_scrollbar.set)
-
+        self.canvas.configure(yscrollcommand=self.v_scrollbar.set, xscrollcommand=self.h_scrollbar.set)
         self.v_scrollbar.pack(side="right", fill="y")
         self.h_scrollbar.pack(side="bottom", fill="x")
         self.canvas.pack(side="left", fill="both", expand=True)
-
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-
         self.scrollable_frame.bind("<Configure>", self.on_frame_configure)
 
-        # Bind the window close event to a custom method
         self.master.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Variables
@@ -55,6 +90,14 @@ class PLAnalysisApp:
         self.relative_times = None
         self.measurement_date = None
 
+        # QFLS data
+        self.qfls_data = []
+        self.qfls_times = []
+
+        # For quantification results (to be set by fitting)
+        self.selected_fit_times = []      # times corresponding to each spectrum fitted
+        self.selected_fit_metrics = []    # metric for each fitted spectrum
+
         self.plot_spectra_var = IntVar(value=1)
         self.plot_luminescence_flux_density_var = IntVar(value=1)
         self.plot_absolute_gradient_var = IntVar(value=1)
@@ -65,6 +108,50 @@ class PLAnalysisApp:
         self.plot_norm_luminescence_flux_density_var = IntVar(value=1)
         self.plot_norm_absolute_gradient_var = IntVar(value=1)
         self.show_legend_var = IntVar(value=1)
+        self.use_single_fit_var = IntVar(value=1)  # 1 = use single Gaussian fit
+        self.use_double_fit_var = IntVar(value=0)  # 1 = use double Gaussian fit
+        self.fit_lower_bound_double = StringVar()
+        self.fit_upper_bound_double = StringVar()
+        self.preview_time_option = StringVar()  # For dropdown preview time; will be set after file load
+        self.normalize_fit_var = IntVar(value=0)
+
+        # Quantification fit options variables
+        self.fit_type_var = StringVar(value="single")  # "single" or "double"
+        self.fit_lower_bound = StringVar()
+        self.fit_upper_bound = StringVar()
+        # For single Gaussian: initial guesses (as strings)
+        self.single_a = StringVar()
+        self.single_mu = StringVar()
+        self.single_sigma = StringVar()
+        # For double Gaussian: initial guesses
+        self.double_a1 = StringVar()
+        self.double_mu1 = StringVar()
+        self.double_sigma1 = StringVar()
+        self.double_a2 = StringVar()
+        self.double_mu2 = StringVar()
+        self.double_sigma2 = StringVar()
+        self.use_single_fit_var = tk.IntVar(value=1)
+        self.use_double_fit_var = tk.IntVar(value=1)
+        self.normalize_fit_var = tk.IntVar(value=1)
+        self.use_split_fit_var = IntVar(value=1)
+
+        self.fit_lower_bound = StringVar(value="500")
+        self.fit_upper_bound = StringVar(value="700")
+        self.fit_lower_bound_double = StringVar(value="500")
+        self.fit_upper_bound_double = StringVar(value="900")
+
+        self.preview_time_option = StringVar(value="")  # will be set after loading file
+
+        self.single_a = StringVar(value="")
+        self.single_mu = StringVar(value="600")
+        self.single_sigma = StringVar(value="5")
+
+        self.double_a1 = StringVar(value="")
+        self.double_mu1 = StringVar(value="600")
+        self.double_sigma1 = StringVar(value="5")
+        self.double_a2 = StringVar(value="")
+        self.double_mu2 = StringVar(value="760")
+        self.double_sigma2 = StringVar(value="3")
 
         # Save options
         self.save_raw_var = IntVar(value=1)
@@ -95,110 +182,520 @@ class PLAnalysisApp:
 
         self.setup_gui()
 
-    def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-
-    def _on_shiftmousewheel(self, event):
-        self.canvas.xview_scroll(int(-1*(event.delta/120)), "units")
-
     def on_frame_configure(self, event):
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def on_close(self):
-        """Ask for confirmation before closing the window."""
-        response = messagebox.askyesno(
-            "Confirm Exit",
-            "Are you sure you want to close? Any unsaved plots will be lost."
-        )
-        if response:  # If the user presses "Yes"
-            self.master.destroy()  # Close the window
-        # If the user presses "No", do nothing and keep the window open.
+        response = messagebox.askyesno("Confirm Exit", "Are you sure you want to close? Any unsaved plots will be lost.")
+        if response:
+            self.master.destroy()
 
     def setup_gui(self):
-        # Title
+        # [Your existing setup_gui code, using self.scrollable_frame instead of self.master]
         Label(self.scrollable_frame, text="PL Analysis Tool", font=("Arial", 16)).grid(row=0, column=0, columnspan=3, pady=10)
-
-        # Load Logo in Top-Right Corner
         self.load_logo("./hzb_logo.jpg")
-
-        # File Load Section
-        Button(self.scrollable_frame, text="Load File", width=15, command=self.load_file).grid(row=1, column=0, padx=10,pady=5, sticky="w")
-
+        Button(self.scrollable_frame, text="Load File", width=15, command=self.load_file).grid(row=1, column=0, padx=10, pady=5, sticky="w")
         self.file_path_entry = Entry(self.scrollable_frame, width=80, state='disabled')
         self.file_path_entry.grid(row=1, column=1, columnspan=2, sticky="w")
-
         Label(self.scrollable_frame, text="Timestamp:").grid(row=0, column=0, padx=10, pady=5, sticky="nw")
         self.date_entry = Entry(self.scrollable_frame, width=18, state='disabled')
         self.date_entry.grid(row=0, column=0, padx=10, pady=5, columnspan=1, sticky="w")
-
-        # Buttons Section
         Button(self.scrollable_frame, text="Save Plots", width=15, command=self.save_plots_dialog).grid(row=2, column=0, padx=10, pady=5, sticky="w")
         Button(self.scrollable_frame, text="Plot All", width=15, command=self.plot_in_window).grid(row=2, column=1, pady=5, sticky="w")
-
-        # Plot Selection
         Label(self.scrollable_frame, text="Select Plots:").grid(row=3, column=0, pady=5, sticky="w", padx=10)
-
-        #checkboxes
         Checkbutton(self.scrollable_frame, text="Spectra", variable=self.plot_spectra_var).grid(row=4, column=0, sticky="w", padx=10)
-        Checkbutton(self.scrollable_frame, text="Flux Density", variable=self.plot_luminescence_flux_density_var).grid( row=5, column=0, sticky="w", padx=10)
-        Checkbutton(self.scrollable_frame, text="Absolute Gradient", variable=self.plot_absolute_gradient_var).grid( row=6, column=0, sticky="w", padx=10)
-
+        Checkbutton(self.scrollable_frame, text="Flux Density", variable=self.plot_luminescence_flux_density_var).grid(row=5, column=0, sticky="w", padx=10)
+        Checkbutton(self.scrollable_frame, text="Absolute Gradient", variable=self.plot_absolute_gradient_var).grid(row=6, column=0, sticky="w", padx=10)
         Checkbutton(self.scrollable_frame, text="Log Spectra", variable=self.plot_log_spectra_var).grid(row=4, column=1, sticky="w")
         Checkbutton(self.scrollable_frame, text="Log Flux Density", variable=self.plot_log_luminescence_flux_density_var).grid(row=5, column=1, sticky="w")
         Checkbutton(self.scrollable_frame, text="Log Absolute Gradient", variable=self.plot_log_absolute_gradient_var).grid(row=6, column=1, sticky="w")
-
         Checkbutton(self.scrollable_frame, text="Normalized Spectra", variable=self.plot_norm_spectra_var).grid(row=7, column=0, sticky="w", padx=10)
         Checkbutton(self.scrollable_frame, text="Normalized Flux Density", variable=self.plot_norm_luminescence_flux_density_var).grid(row=7, column=1, sticky="w")
         Checkbutton(self.scrollable_frame, text="Normalized Absolute Gradient", variable=self.plot_norm_absolute_gradient_var).grid(row=8, column=0, sticky="w", padx=10)
-
-        # Add new filter buttons
         Button(self.scrollable_frame, text="Wavelength Filter", width=20, command=self.open_filter_wavelength_range_window).grid(row=5, column=2, sticky="w")
         Button(self.scrollable_frame, text="Intensity Filter", width=20, command=self.open_filter_by_intensity_range_window).grid(row=6, column=2, sticky="w")
         Button(self.scrollable_frame, text="Smoothing", width=20, command=self.open_filter_by_moving_average_window).grid(row=7, column=2, sticky="w")
         Button(self.scrollable_frame, text="Show Metadata", width=20, command=self.show_metadata).grid(row=8, column=2, sticky="w")
-
-        # Reset Filter Button
         Button(self.scrollable_frame, text="Reset Filter", width=20, command=self.reset_filters).grid(row=4, column=2, sticky="w")
-
         Button(self.scrollable_frame, text="QFLS", width=15, command=self.open_qfls_window).grid(row=4, column=3, padx=10, pady=5, sticky="w")
-        #Button(self.scrollable_frame, text="Gaussian", width=15, command=self.open_customization_window).grid(row=5, column=3, padx=10, pady=5, sticky="w")
-        #Button(self.scrollable_frame, text="Double Gaussian", width=15, command=self.open_evaluation_window).grid(row=6, column=3, padx=10, pady=5, sticky="w")
-        #Button(self.scrollable_frame, text="Halide Segregation", width=15, command=self.open_customization_window).grid(row=7, column=3, padx=10, pady=5, sticky="w")
-        #Button(self.scrollable_frame, text="Customize Plots", width=15, command=self.open_customization_window).grid(row=8, column=3, padx=10, pady=5, sticky="w")
-
-        # Info Buttons
+        Button(self.scrollable_frame, text="Quantify Segregation", width=15, command=self.open_quantification_window).grid(row=5, column=3, padx=10, pady=5, sticky="w")
         Button(self.scrollable_frame, text="Info: Spectra", width=20, anchor="w", command=lambda: self.show_info("Spectra")).grid(row=4, column=4, sticky="w")
         Button(self.scrollable_frame, text="Info: Flux Density", width=20, anchor="w", command=lambda: self.show_info("Flux Density")).grid(row=5, column=4, sticky="w")
         Button(self.scrollable_frame, text="Info: Absolute Gradient", width=20, anchor="w", command=lambda: self.show_info("Absolute Gradient")).grid(row=6, column=4, sticky="w")
-
-        # Legend Toggle
         Checkbutton(self.scrollable_frame, text="Show Legend", variable=self.show_legend_var).grid(row=8, column=1, sticky="w")
-
-        # Plot Frame
         self.plot_frame = Frame(self.scrollable_frame, width=1200, height=800, bg="white")
         self.plot_frame.grid(row=9, column=0, columnspan=4, pady=10)
-
-        # Raw Data Selection
         self.time_check_frame = Frame(self.scrollable_frame)
         self.time_check_frame.grid(row=11, column=0, columnspan=4, pady=5)
-
         Button(self.scrollable_frame, text="Update Plots", width=15, command=self.update_raw_plot).grid(row=10, column=1)
-
-        # Select All Checkbox
-        self.select_all_var = IntVar(value=1)  # Default: All selected
-        Checkbutton(self.scrollable_frame,text="Toggle All Times",variable=self.select_all_var,command=self.toggle_all_time_checkboxes).grid(row=10 , column=2)
+        self.select_all_var = IntVar(value=1)
+        Checkbutton(self.scrollable_frame, text="Toggle All Times", variable=self.select_all_var, command=self.toggle_all_time_checkboxes).grid(row=10, column=2)
 
     def load_logo(self, file_path):
-        """Loads and places the logo image in the top-right corner."""
         try:
             image = Image.open(file_path)
-            image = image.resize((200, 100), Image.Resampling.LANCZOS)  # Resize the logo to 2x size
+            image = image.resize((200, 100), Image.Resampling.LANCZOS)
             self.logo_image = ImageTk.PhotoImage(image)
-
-            # Display the logo
             Label(self.scrollable_frame, image=self.logo_image).grid(row=0, column=3, sticky="ne")
         except Exception as e:
             print(f"Error loading logo: {e}")
+
+    ##############################
+    # Quantification GUI Methods #
+    ##############################
+
+    def open_quantification_window(self):
+        """Opens a window to set initial guesses, wavelength bounds, and select fit types and preview time."""
+        if not self.relative_times:
+            messagebox.showerror("Error", "No relative time data available. Load a file first.")
+            return
+
+        if not self.preview_time_option.get():
+            self.preview_time_option.set(self.relative_times[0])
+
+        quant_window = Toplevel(self.master)
+        quant_window.title("Quantify Halide Segregation")
+
+        # --- Fit Type Selection ---
+        Label(quant_window, text="Select Fit Types (tick one or more):", font=("Arial", 12)).grid(row=0, column=0,
+                                                                                                  columnspan=2, padx=10,
+                                                                                                  pady=5, sticky="w")
+        Checkbutton(quant_window, text="Single Gaussian", variable=self.use_single_fit_var).grid(row=0, column=2,
+                                                                                                 padx=5, pady=5,
+                                                                                                 sticky="w")
+        Checkbutton(quant_window, text="Double Gaussian", variable=self.use_double_fit_var).grid(row=0, column=3,
+                                                                                                 padx=5, pady=5,
+                                                                                                 sticky="w")
+        # Remove Sum fit checkbutton and add Split Fit instead:
+        Checkbutton(quant_window, text="Split Fit", variable=self.use_split_fit_var).grid(row=0, column=4,
+                                                                                          padx=5, pady=5, sticky="w")
+
+        # --- Wavelength Range for Single Gaussian Fitting ---
+        Label(quant_window, text="Single Gaussian Wavelength Range (nm):", font=("Arial", 12)).grid(row=1, column=0,
+                                                                                                    columnspan=2,
+                                                                                                    padx=10, pady=5,
+                                                                                                    sticky="w")
+        Label(quant_window, text="Min:").grid(row=1, column=2, sticky="w")
+        lower_entry = Entry(quant_window, textvariable=self.fit_lower_bound, width=10)
+        lower_entry.grid(row=1, column=3, sticky="w", padx=5)
+        Label(quant_window, text="Max:").grid(row=1, column=4, sticky="w")
+        upper_entry = Entry(quant_window, textvariable=self.fit_upper_bound, width=10)
+        upper_entry.grid(row=1, column=5, sticky="w", padx=5)
+
+        # --- Wavelength Range for Double (and Split/Multi) Fitting ---
+        Label(quant_window, text="Double Gaussian Wavelength Range (nm):", font=("Arial", 12)).grid(row=2, column=0,
+                                                                                                    columnspan=2,
+                                                                                                    padx=10, pady=5,
+                                                                                                    sticky="w")
+        Label(quant_window, text="Min:").grid(row=2, column=2, sticky="w")
+        lower_double_entry = Entry(quant_window, textvariable=self.fit_lower_bound_double, width=10)
+        lower_double_entry.grid(row=2, column=3, sticky="w", padx=5)
+        Label(quant_window, text="Max:").grid(row=2, column=4, sticky="w")
+        upper_double_entry = Entry(quant_window, textvariable=self.fit_upper_bound_double, width=10)
+        upper_double_entry.grid(row=2, column=5, sticky="w", padx=5)
+
+        # --- Preview Time Selection as Dropdown ---
+        Label(quant_window, text="Select Preview Time:", font=("Arial", 12)).grid(row=3, column=0, padx=10, pady=5,
+                                                                                  sticky="w")
+        OptionMenu(quant_window, self.preview_time_option, *self.relative_times).grid(row=3, column=1, padx=10, pady=5,
+                                                                                      sticky="w")
+
+        # --- Initial Guesses for Single Peak ---
+        Label(quant_window, text="Initial Guesses: Single Peak", font=("Arial", 12)).grid(row=4, column=0,
+                                                                                          columnspan=2, padx=10,
+                                                                                          pady=5, sticky="w")
+        Label(quant_window, text="Amplitude:").grid(row=4, column=2, sticky="w")
+        amp_entry = Entry(quant_window, textvariable=self.single_a, width=10)
+        amp_entry.grid(row=4, column=3, sticky="w", padx=5)
+        Label(quant_window, text="Peak (nm):").grid(row=4, column=4, sticky="w")
+        mu_entry = Entry(quant_window, textvariable=self.single_mu, width=10)
+        mu_entry.grid(row=4, column=5, sticky="w", padx=5)
+        Label(quant_window, text="Sigma:").grid(row=4, column=6, sticky="w")
+        sigma_entry = Entry(quant_window, textvariable=self.single_sigma, width=10)
+        sigma_entry.grid(row=4, column=7, sticky="w", padx=5)
+
+        # --- Initial Guesses for Double Peak (Used for Double, Split & Multi Fits) ---
+        Label(quant_window, text="Initial Guesses: Double Peak", font=("Arial", 12)).grid(row=5, column=0,
+                                                                                          columnspan=2, padx=10,
+                                                                                          pady=5, sticky="w")
+        Label(quant_window, text="Amp1:").grid(row=5, column=2, sticky="w")
+        amp1_entry = Entry(quant_window, textvariable=self.double_a1, width=10)
+        amp1_entry.grid(row=5, column=3, sticky="w", padx=5)
+        Label(quant_window, text="Peak1 (nm):").grid(row=5, column=4, sticky="w")
+        mu1_entry = Entry(quant_window, textvariable=self.double_mu1, width=10)
+        mu1_entry.grid(row=5, column=5, sticky="w", padx=5)
+        Label(quant_window, text="Sigma1:").grid(row=5, column=6, sticky="w")
+        sigma1_entry = Entry(quant_window, textvariable=self.double_sigma1, width=10)
+        sigma1_entry.grid(row=5, column=7, sticky="w", padx=5)
+
+        Label(quant_window, text="Amp2:").grid(row=6, column=2, sticky="w")
+        amp2_entry = Entry(quant_window, textvariable=self.double_a2, width=10)
+        amp2_entry.grid(row=6, column=3, sticky="w", padx=5)
+        Label(quant_window, text="Peak2 (nm):").grid(row=6, column=4, sticky="w")
+        mu2_entry = Entry(quant_window, textvariable=self.double_mu2, width=10)
+        mu2_entry.grid(row=6, column=5, sticky="w", padx=5)
+        Label(quant_window, text="Sigma2:").grid(row=6, column=6, sticky="w")
+        sigma2_entry = Entry(quant_window, textvariable=self.double_sigma2, width=10)
+        sigma2_entry.grid(row=6, column=7, sticky="w", padx=5)
+
+        # --- Normalization Option & Buttons ---
+        Checkbutton(quant_window, text="Normalize Single Fit Area", variable=self.normalize_fit_var).grid(row=7,
+                                                                                                          column=0,
+                                                                                                          columnspan=2,
+                                                                                                          padx=10,
+                                                                                                          pady=5,
+                                                                                                          sticky="w")
+        Button(quant_window, text="Apply Fit", command=lambda: self.apply_peak_fit(quant_window)).grid(row=8, column=0,
+                                                                                                       columnspan=4,
+                                                                                                       pady=10)
+        Button(quant_window, text="Preview Fit", command=self.preview_peak_fit).grid(row=8, column=4, columnspan=4,
+                                                                                     pady=10)
+
+    def plot_quantification_results_side_by_side(self, times_single, metrics_single, times_double, metrics_double,
+                                                 times_sum, metrics_sum):
+        """Opens a new window and plots all four quantification results side by side."""
+        result_window = Toplevel(self.master)
+        result_window.title("Peak Quantification Results (Comparison)")
+        fig, axs = plt.subplots(1, 3, figsize=(18, 4))
+
+        axs[0].plot(times_single, metrics_single, marker="o", linestyle="-", color="purple", label="Single Gaussian")
+        axs[0].set_xlabel("Time [s]")
+        axs[0].set_ylabel("Peak Area [a.u.]")
+        axs[0].set_title("Single Gaussian Fit")
+        axs[0].legend()
+        axs[0].grid(True)
+
+        axs[1].plot(times_double, metrics_double, marker="o", linestyle="-", color="blue", label="Double Gaussian")
+        axs[1].set_xlabel("Time [s]")
+        axs[1].set_ylabel("Area Ratio")
+        axs[1].set_title("Double Gaussian Fit")
+        axs[1].legend()
+        axs[1].grid(True)
+
+        axs[2].plot(times_sum, metrics_sum, marker="o", linestyle="-", color="green", label="Sum of Two Gaussians")
+        axs[2].set_xlabel("Time [s]")
+        axs[2].set_ylabel("Area Ratio")
+        axs[2].set_title("Split Fit")
+        axs[2].legend()
+        axs[2].grid(True)
+
+        fig.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=result_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        NavigationToolbar2Tk(canvas, result_window).pack(side="top", fill="x")
+
+    def preview_peak_fit(self):
+        """
+        Opens a window to preview the fitted curves for the selected time point.
+        For each fitting method ticked in the quantification window (Single Gaussian,
+        Double Gaussian, Split Fit, and Multi-Gaussian), a separate subplot is shown,
+        allowing you to compare which fit works best.
+        The full spectrum is shown as blue dots while the fit is computed only on the
+        relevant wavelength region.
+        (No ratio is displayed in the title.)
+        """
+        preview_time = self.preview_time_option.get()
+        try:
+            j = self.relative_times.index(preview_time)
+        except ValueError:
+            messagebox.showerror("Error", "Selected preview time not found in relative times.")
+            return
+
+        x_data = self.wavelength
+        y_data = self.raw_counts[:, j] if self.contains_counts_flag and self.raw_counts is not None else self.luminescence_flux_density[:, j] if self.contains_flux_flag and self.luminescence_flux_density is not None else None
+        selected_fits = []
+        if self.use_single_fit_var.get():
+            selected_fits.append("single")
+        if self.use_double_fit_var.get():
+            selected_fits.append("double")
+        if self.use_split_fit_var.get():
+            selected_fits.append("split")
+
+        if not selected_fits:
+            messagebox.showerror("Error", "No fitting method selected for preview.")
+            return
+
+        num_plots = len(selected_fits)
+        preview_window = Toplevel(self.master)
+        preview_window.title(f"Fit Preview for Time {preview_time}")
+        fig, axs = plt.subplots(1, num_plots, figsize=(6 * num_plots, 4))
+        if num_plots == 1:
+            axs = [axs]
+        plot_index = 0
+
+        # --- Single Gaussian Preview ---
+        if "single" in selected_fits:
+            try:
+                try:
+                    lower_single = float(self.fit_lower_bound.get())
+                    upper_single = float(self.fit_upper_bound.get())
+                    indices_single = np.where((x_data >= lower_single) & (x_data <= upper_single))[0]
+                except:
+                    indices_single = np.arange(len(x_data))
+                x_fit = x_data[indices_single]
+                y_fit = y_data[indices_single]
+                amp_guess = float(self.single_a.get()) if self.single_a.get() else np.nanmax(y_fit)
+                mu_guess = float(self.single_mu.get()) if self.single_mu.get() else (x_fit[0] + x_fit[-1]) / 2
+                sigma_guess = float(self.single_sigma.get()) if self.single_sigma.get() else (x_fit[-1] - x_fit[0]) / 4
+                p0 = [amp_guess, mu_guess, sigma_guess]
+                popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0)
+                fitted_curve = gaussian(x_fit, *popt)
+                axs[plot_index].plot(x_data, y_data, "b.", label="Data")
+                axs[plot_index].plot(x_fit, fitted_curve, "r-", label="Single Gaussian")
+                axs[plot_index].set_title("Single Gaussian Fit")
+                axs[plot_index].legend()
+            except Exception as e:
+                axs[plot_index].text(0.5, 0.5, f"Single fit failed:\n{e}", ha="center", va="center",
+                                     transform=axs[plot_index].transAxes)
+            plot_index += 1
+
+        # --- Double Gaussian Preview (Constrained) ---
+        if "double" in selected_fits:
+            try:
+                try:
+                    lower_double = float(self.fit_lower_bound_double.get())
+                    upper_double = float(self.fit_upper_bound_double.get())
+                    indices_double = np.where((x_data >= lower_double) & (x_data <= upper_double))[0]
+                except:
+                    indices_double = np.arange(len(x_data))
+                x_fit = x_data[indices_double]
+                y_fit = y_data[indices_double]
+                p0_double = [
+                    float(self.double_a1.get()) if self.double_a1.get() else np.nanmax(y_fit) / 2,
+                    float(self.double_mu1.get()) if self.double_mu1.get() else x_fit[np.argmax(y_fit)] - 5,
+                    float(self.double_sigma1.get()) if self.double_sigma1.get() else (x_fit[-1] - x_fit[0]) / 8,
+                    0.6, 20, 1.2
+                ]
+                bounds_constrained = ([0, x_fit[0], 0, 0, -np.inf, 0],
+                                      [np.inf, x_fit[-1], np.inf, 1, np.inf, np.inf])
+                popt, _ = curve_fit(double_gaussian, x_fit, y_fit, p0=p0_double,
+                                    bounds=bounds_constrained, method='dogbox')
+                fitted_curve = double_gaussian(x_fit, *popt)
+                axs[plot_index].plot(x_data, y_data, "b.", label="Data")
+                axs[plot_index].plot(x_fit, fitted_curve, "r-", label="Double Gaussian")
+                axs[plot_index].set_title("Double Gaussian Fit")
+                axs[plot_index].legend()
+            except Exception as e:
+                axs[plot_index].text(0.5, 0.5, f"Double fit failed:\n{e}", ha="center", va="center",
+                                     transform=axs[plot_index].transAxes)
+            plot_index += 1
+
+        # --- Split Fit Preview ---
+        if "split" in selected_fits:
+            try:
+                try:
+                    lower_double = float(self.fit_lower_bound_double.get())
+                    upper_double = float(self.fit_upper_bound_double.get())
+                except:
+                    lower_double = x_data[0]
+                    upper_double = x_data[-1]
+                indices_double = np.where((x_data >= lower_double) & (x_data <= upper_double))[0]
+                x_fit_full = x_data[indices_double]
+                y_fit_full = y_data[indices_double]
+                mid = (lower_double + upper_double) / 2
+                left_mask = x_fit_full < mid
+                right_mask = x_fit_full >= mid
+                if np.sum(left_mask) == 0 or np.sum(right_mask) == 0:
+                    raise ValueError("Insufficient data on one side of the midpoint.")
+                x_left = x_fit_full[left_mask]
+                y_left = y_fit_full[left_mask]
+                x_right = x_fit_full[right_mask]
+                y_right = y_fit_full[right_mask]
+                # Use the double peak initial guesses if provided.
+                amp_left = float(self.double_a1.get()) if self.double_a1.get() else np.nanmax(y_left)
+                mu_left = float(self.double_mu1.get()) if self.double_mu1.get() else (x_left[0] + x_left[-1]) / 2
+                sigma_left = float(self.double_sigma1.get()) if self.double_sigma1.get() else (x_left[-1] - x_left[
+                    0]) / 4
+                p0_left = [amp_left, mu_left, sigma_left]
+                popt_left, _ = curve_fit(gaussian, x_left, y_left, p0=p0_left)
+                fitted_left = gaussian(x_left, *popt_left)
+                amp_right = float(self.double_a2.get()) if self.double_a2.get() else np.nanmax(y_right)
+                mu_right = float(self.double_mu2.get()) if self.double_mu2.get() else (x_right[0] + x_right[-1]) / 2
+                sigma_right = float(self.double_sigma2.get()) if self.double_sigma2.get() else (x_right[-1] - x_right[
+                    0]) / 4
+                p0_right = [amp_right, mu_right, sigma_right]
+                popt_right, _ = curve_fit(gaussian, x_right, y_right, p0=p0_right)
+                fitted_right = gaussian(x_right, *popt_right)
+                axs[plot_index].plot(x_data, y_data, "b.", label="Data")
+                axs[plot_index].plot(x_left, fitted_left, "m-", label="Left Peak")
+                axs[plot_index].plot(x_right, fitted_right, "c-", label="Right Peak")
+                axs[plot_index].set_title("Split Fit")
+                axs[plot_index].legend()
+            except Exception as e:
+                axs[plot_index].text(0.5, 0.5, f"Split fit failed:\n{e}", ha="center", va="center",
+                                     transform=axs[plot_index].transAxes)
+            plot_index += 1
+
+        # --- Multi-Gaussian Preview ---
+        if "multi" in selected_fits:
+            try:
+                total_fit, params_list = Multi_Gaussfit(x_data, y_data)
+                if len(params_list) >= 2:
+                    A1, mu1, sigma1 = params_list[0]
+                    A2, mu2, sigma2 = params_list[1]
+                    area1 = A1 * sigma1 * np.sqrt(2 * np.pi)
+                    area2 = A2 * sigma2 * np.sqrt(2 * np.pi)
+                    ratio = area2 / area1 if area1 != 0 else np.nan
+                else:
+                    ratio = np.nan
+                axs[plot_index].plot(x_data, y_data, "b.", label="Data")
+                axs[plot_index].plot(x_data, total_fit, "orange", label="Multi-Gaussian")
+                axs[plot_index].set_title("Multi-Gaussian Fit")
+                axs[plot_index].legend()
+            except Exception as e:
+                axs[plot_index].text(0.5, 0.5, f"Multi fit failed:\n{e}", ha="center", va="center",
+                                     transform=axs[plot_index].transAxes)
+            plot_index += 1
+
+        fig.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=preview_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        NavigationToolbar2Tk(canvas, preview_window).pack(side="top", fill="x")
+
+    def apply_peak_fit(self, quant_window):
+        """
+        Applies the selected Gaussian fits to the spectral data within the specified wavelength ranges.
+        Only uses time points where the checkboxes are ticked.
+        Computes metrics for:
+          - Single Gaussian: peak area (normalized if chosen)
+          - Double Gaussian: ratio of the two peak areas (from the constrained double Gaussian)
+          - Split Fit: ratio of areas from separate single Gaussian fits on left and right segments,
+                       computed as (peak1 / peak2) where peak2 corresponds to the right segment.
+        Then, opens a window with side-by-side plots for comparison.
+        """
+        try:
+            lower_single = float(self.fit_lower_bound.get())
+            upper_single = float(self.fit_upper_bound.get())
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid single Gaussian wavelength bounds.")
+            return
+
+        try:
+            lower_double = float(self.fit_lower_bound_double.get())
+            upper_double = float(self.fit_upper_bound_double.get())
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid double Gaussian wavelength bounds.")
+            return
+
+        indices_single = np.where((self.wavelength >= lower_single) & (self.wavelength <= upper_single))[0]
+        indices_double = np.where((self.wavelength >= lower_double) & (self.wavelength <= upper_double))[0]
+
+        if self.use_single_fit_var.get() == 1 and len(indices_single) == 0:
+            messagebox.showerror("Error", "No data points in the single Gaussian wavelength range.")
+            return
+        if ((self.use_double_fit_var.get() or (
+                hasattr(self, "use_split_fit_var") and self.use_split_fit_var.get()) or self.use_multi_fit_var.get())
+                and len(indices_double) == 0):
+            messagebox.showerror("Error", "No data points in the double Gaussian wavelength range.")
+            return
+
+        single_fit_metrics = []
+        single_fit_times = []
+        double_fit_metrics = []
+        double_fit_times = []
+        split_fit_metrics = []
+        split_fit_times = []
+
+        selected_time_indices = [i for var, i in self.time_checkboxes if var.get() == 1]
+        if not selected_time_indices:
+            messagebox.showerror("Error", "No time points selected for fitting.")
+            return
+
+        for j in selected_time_indices:
+            t = float(self.relative_times[j].replace("s", ""))
+            # --- Single Gaussian Fit ---
+            if self.use_single_fit_var.get() == 1:
+                x_single = self.wavelength[indices_single]
+                y_single = self.raw_counts[indices_single, j] if self.contains_counts_flag and self.raw_counts is not None else self.luminescence_flux_density[indices_single, j] if self.contains_flux_flag and self.luminescence_flux_density is not None else None
+
+                try:
+                    amp_guess = float(self.single_a.get()) if self.single_a.get() else np.nanmax(y_single)
+                    mu_guess = float(self.single_mu.get()) if self.single_mu.get() else (x_single[0] + x_single[-1]) / 2
+                    sigma_guess = float(self.single_sigma.get()) if self.single_sigma.get() else (x_single[-1] -
+                                                                                                  x_single[0]) / 4
+                    p0 = [amp_guess, mu_guess, sigma_guess]
+                    popt, _ = curve_fit(gaussian, x_single, y_single, p0=p0)
+                    area = popt[0] * popt[2] * np.sqrt(2 * np.pi)
+                    single_fit_metrics.append(area)
+                    single_fit_times.append(t)
+                except Exception as e:
+                    print(f"Single fit failed for time index {j}: {e}")
+
+            # --- Double Gaussian Fit (Constrained) ---
+            if self.use_double_fit_var.get() == 1:
+                x_double = self.wavelength[indices_double]
+                y_double = self.raw_counts[
+                    indices_double, j] if self.contains_counts_flag and self.raw_counts is not None else \
+                    self.luminescence_flux_density[
+                        indices_double, j] if self.contains_flux_flag and self.luminescence_flux_density is not None else None
+                try:
+                    p0_double = [
+                        float(self.double_a1.get()) if self.double_a1.get() else np.nanmax(y_double) / 2,
+                        float(self.double_mu1.get()) if self.double_mu1.get() else x_double[np.argmax(y_double)] - 5,
+                        float(self.double_sigma1.get()) if self.double_sigma1.get() else (x_double[-1] - x_double[
+                            0]) / 8,
+                        0.6, 20, 1.2
+                    ]
+                    bounds_constrained = ([0, x_double[0], 0, 0, -np.inf, 0],
+                                          [np.inf, x_double[-1], np.inf, 1, np.inf, np.inf])
+                    popt, _ = curve_fit(double_gaussian, x_double, y_double, p0=p0_double,
+                                        bounds=bounds_constrained, method='dogbox')
+                    area1 = popt[0] * popt[2] * np.sqrt(2 * np.pi)
+                    area2 = (popt[0] * popt[3]) * (popt[2] * popt[5]) * np.sqrt(2 * np.pi)
+                    ratio = area1 / area2 if area2 != 0 else np.nan
+                    double_fit_metrics.append(ratio)
+                    double_fit_times.append(t)
+                except Exception as e:
+                    print(f"Double fit failed for time index {j}: {e}")
+
+            # --- Split Fit (Separate Single Fits on Left & Right) ---
+            if hasattr(self, "use_split_fit_var") and self.use_split_fit_var.get():
+                try:
+                    x_full = self.wavelength[indices_double]
+                    y_full = self.raw_counts[indices_double, j] if self.contains_counts_flag and self.raw_counts is not None else \
+                    self.luminescence_flux_density[indices_double, j] if self.contains_flux_flag and self.luminescence_flux_density is not None else None
+
+                    mid = (lower_double + upper_double) / 2
+                    left_mask = x_full < mid
+                    right_mask = x_full >= mid
+                    if np.sum(left_mask) == 0 or np.sum(right_mask) == 0:
+                        raise ValueError("Insufficient data on one side of the midpoint.")
+                    x_left = x_full[left_mask]
+                    y_left = y_full[left_mask]
+                    x_right = x_full[right_mask]
+                    y_right = y_full[right_mask]
+                    # Use double peak initial guesses if provided:
+                    amp_left = float(self.double_a1.get()) if self.double_a1.get() else np.nanmax(y_left)
+                    mu_left = float(self.double_mu1.get()) if self.double_mu1.get() else (x_left[0] + x_left[-1]) / 2
+                    sigma_left = float(self.double_sigma1.get()) if self.double_sigma1.get() else (x_left[-1] - x_left[
+                        0]) / 4
+                    p0_left = [amp_left, mu_left, sigma_left]
+                    popt_left, _ = curve_fit(gaussian, x_left, y_left, p0=p0_left)
+                    amp_right = float(self.double_a2.get()) if self.double_a2.get() else np.nanmax(y_right)
+                    mu_right = float(self.double_mu2.get()) if self.double_mu2.get() else (x_right[0] + x_right[-1]) / 2
+                    sigma_right = float(self.double_sigma2.get()) if self.double_sigma2.get() else (x_right[-1] -
+                                                                                                    x_right[0]) / 4
+                    p0_right = [amp_right, mu_right, sigma_right]
+                    popt_right, _ = curve_fit(gaussian, x_right, y_right, p0=p0_right)
+                    area_left = popt_left[0] * popt_left[2] * np.sqrt(2 * np.pi)
+                    area_right = popt_right[0] * popt_right[2] * np.sqrt(2 * np.pi)
+                    # Always compute peak ratio as (peak2 / peak1)
+                    ratio = area_left / area_right if area_right != 0 else np.nan
+                    split_fit_metrics.append(ratio)
+                    split_fit_times.append(t)
+                except Exception as e:
+                    print(f"Split fit failed for time index {j}: {e}")
+
+        if self.normalize_fit_var.get() == 1:
+            single_fit_metrics = single_fit_metrics / np.max(single_fit_metrics)
+
+        quant_window.destroy()
+
+        self.plot_quantification_results_side_by_side(single_fit_times, single_fit_metrics,
+                                                      double_fit_times, double_fit_metrics,
+                                                      split_fit_times, split_fit_metrics)
 
     def show_option_info(self, filter_type):
         info_messages = {
@@ -827,28 +1324,49 @@ class PLAnalysisApp:
         print(f"contains_flux_flag: {self.contains_flux_flag}")
 
     def calculate_relative_times(self, raw_times):
-        # Check if it's a single measurement first
+        """
+        Parses a list of timestamp strings and computes relative times (in seconds)
+        based on consecutive differences. The first time is set to 0. For each subsequent
+        timestamp, if the gap from the previous timestamp is negative or more than three
+        times the median gap (computed from all positive consecutive differences),
+        the gap is replaced with the median gap.
+        Returns a list of strings (e.g. "0s", "2s", "4s", …).
+        """
         if len(raw_times) <= 1:
             return None
-
         try:
-            # Check if time contains date
+            # Determine the time format.
             if " " in raw_times[0]:
                 time_format = "%d.%m.%Y %H:%M:%S"
             else:
                 time_format = "%H:%M:%S"
 
-            first_time = datetime.strptime(raw_times[0], time_format)
-            relative_times = []
+            # Parse all timestamps.
+            times = [datetime.strptime(ts, time_format) for ts in raw_times]
 
-            for time_str in raw_times:
-                current_time = datetime.strptime(time_str, time_format)
-                delta_seconds = int((current_time - first_time).total_seconds())
-                relative_times.append(f"{delta_seconds}s")
+            # Compute differences (in seconds) between consecutive timestamps.
+            diffs = []
+            for i in range(1, len(times)):
+                d = (times[i] - times[i - 1]).total_seconds()
+                diffs.append(d)
 
-            return relative_times
+            # Compute the typical (median) gap using only positive differences.
+            valid_diffs = [d for d in diffs if d > 0]
+            median_gap = np.median(valid_diffs) if valid_diffs else 2
+
+            # Build the cumulative relative times, starting at 0.
+            cum_times = [0]
+            for d in diffs:
+                # If the gap is negative or unusually large, replace it with median_gap.
+                if d <= 0 or d > 3 * median_gap:
+                    cum_times.append(cum_times[-1] + median_gap)
+                else:
+                    cum_times.append(cum_times[-1] + d)
+
+            # Return the cumulative times as strings with "s" appended.
+            return [f"{int(t)}s" for t in cum_times]
         except Exception as e:
-            print(f"Error parsing times: {e}")
+            print("Error parsing times:", e)
             return None
 
     def setup_time_checkboxes(self):
