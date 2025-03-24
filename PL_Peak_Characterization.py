@@ -16,6 +16,7 @@ from matplotlib.ticker import MaxNLocator
 #####################
 
 def gaussian(x, A, mu, sigma):
+    sigma = max(sigma, 1e-6)  # Prevents zero sigma
     return A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
 
 def double_gaussian(x, A1, mu1, sigma1, f, delta, r):
@@ -26,11 +27,14 @@ def double_gaussian(x, A1, mu1, sigma1, f, delta, r):
     """
     A2 = A1 * f
     mu2 = mu1 + delta
+    sigma1 = max(sigma1, 1e-6)  # Prevents zero sigma
     sigma2 = sigma1 * r
     return gaussian(x, A1, mu1, sigma1) + gaussian(x, A2, mu2, sigma2)
 
 def sum_of_two_gaussians(x, A1, mu1, sigma1, A2, mu2, sigma2):
     """Sum of two independent Gaussian functions."""
+    sigma1 = max(sigma1, 1e-6)  # Prevents zero sigma
+    sigma2 = max(sigma2, 1e-6)  # Prevents zero sigma
     return gaussian(x, A1, mu1, sigma1) + gaussian(x, A2, mu2, sigma2)
 
 def Multi_Gaussfit(x, y, max_gaussians=5):
@@ -134,6 +138,8 @@ class PLAnalysisApp:
         self.use_double_fit_var = tk.IntVar(value=1)
         self.normalize_fit_var = tk.IntVar(value=1)
         self.use_split_fit_var = IntVar(value=1)
+        self.use_modified_metric = IntVar(value=0)
+        self.maxfev = StringVar(value="800")
 
         self.fit_lower_bound = StringVar(value="500")
         self.fit_upper_bound = StringVar(value="700")
@@ -152,6 +158,7 @@ class PLAnalysisApp:
         self.double_a2 = StringVar(value="")
         self.double_mu2 = StringVar(value="760")
         self.double_sigma2 = StringVar(value="3")
+        self.combine_metric_plots = IntVar(value=0)
 
         # Save options
         self.save_raw_var = IntVar(value=1)
@@ -339,46 +346,146 @@ class PLAnalysisApp:
         sigma2_entry.grid(row=6, column=7, sticky="w", padx=5)
 
         # --- Normalization Option & Buttons ---
-        Checkbutton(quant_window, text="Normalize Single Fit Area", variable=self.normalize_fit_var).grid(row=7,
+        Checkbutton(quant_window, text="Normalize Single Fit Area", variable=self.normalize_fit_var).grid(row=8,
                                                                                                           column=0,
                                                                                                           columnspan=2,
                                                                                                           padx=10,
                                                                                                           pady=5,
                                                                                                           sticky="w")
-        Button(quant_window, text="Apply Fit", command=lambda: self.apply_peak_fit(quant_window)).grid(row=8, column=0,
+        # --- New Option: Max Function Evaluations ---
+        Label(quant_window, text="Max Function Evaluations:").grid(row=7, column=0, padx=10, pady=5,sticky="w")
+        maxfev_entry = Entry(quant_window, textvariable=self.maxfev, width=10)
+        maxfev_entry.grid(row=7, column=1, sticky="w", padx=5)
+
+        # --- New Option: Use Modified Peak Metric ---
+        Checkbutton(quant_window, text="Use Modified Peak Metric", variable=self.use_modified_metric).grid(row=9,
+                                                                                                           column=0,
+                                                                                                           padx=10,
+                                                                                                           pady=5,
+                                                                                                           sticky="w")
+
+        Button(quant_window, text="Apply Fit", command=lambda: self.apply_peak_fit(quant_window)).grid(row=11, column=0,
                                                                                                        columnspan=4,
                                                                                                        pady=10)
-        Button(quant_window, text="Preview Fit", command=self.preview_peak_fit).grid(row=8, column=4, columnspan=4,
+        Button(quant_window, text="Preview Fit", command=self.preview_peak_fit).grid(row=11, column=4, columnspan=4,
                                                                                      pady=10)
+        # --- New Option: Show Both Metrics (Combined Plot) ---
+        Checkbutton(quant_window, text="Show Both Metrics", variable=self.combine_metric_plots).grid(row=10, column=0,
+                                                                                                     padx=10, pady=5,
+                                                                                                     sticky="w")
 
-    def plot_quantification_results_side_by_side(self, times_single, metrics_single, times_double, metrics_double,
-                                                 times_sum, metrics_sum):
-        """Opens a new window and plots all four quantification results side by side."""
+    def plot_quantification_results_combined(self, times_single, area_single, mod_single,
+                                             times_double, area_double, mod_double,
+                                             times_split, area_split, mod_split):
+        """
+        Opens a window and plots the quantification results in two rows.
+        The top row shows the standard (area-based) metrics and the bottom row shows
+        the modified metrics.
+        """
+        result_window = Toplevel(self.master)
+        result_window.title("Peak Quantification Results (Combined Metrics)")
+
+        # Determine the number of columns (we assume all methods are plotted)
+        n_cols = 3  # Single, Double, Split
+
+        fig, axs = plt.subplots(2, n_cols, figsize=(6 * n_cols, 8))
+
+        # Top row: area metrics
+        axs[0, 0].plot(times_single, area_single, marker="o", linestyle="-", color="purple", label="Single Gaussian")
+        axs[0, 0].set_xlabel("Time [s]")
+        axs[0, 0].set_ylabel("Peak Area [a.u.]")
+        axs[0, 0].set_title("Single Gaussian Fit (Area)")
+        axs[0, 0].legend()
+        axs[0, 0].grid(True)
+
+        axs[0, 1].plot(times_double, area_double, marker="o", linestyle="-", color="blue", label="Double Gaussian")
+        axs[0, 1].set_xlabel("Time [s]")
+        axs[0, 1].set_ylabel("Area Ratio")
+        axs[0, 1].set_title("Double Gaussian Fit (Area Ratio)")
+        axs[0, 1].legend()
+        axs[0, 1].grid(True)
+
+        axs[0, 2].plot(times_split, area_split, marker="o", linestyle="-", color="green", label="Split Fit")
+        axs[0, 2].set_xlabel("Time [s]")
+        axs[0, 2].set_ylabel("Area Ratio")
+        axs[0, 2].set_title("Split Fit (Area Ratio)")
+        axs[0, 2].legend()
+        axs[0, 2].grid(True)
+
+        # Bottom row: modified metrics
+        axs[1, 0].plot(times_single, mod_single, marker="o", linestyle="-", color="purple", label="Single Gaussian")
+        axs[1, 0].set_xlabel("Time [s]")
+        axs[1, 0].set_ylabel("A/σ")
+        axs[1, 0].set_title("Single Gaussian Fit (A/σ)")
+        axs[1, 0].legend()
+        axs[1, 0].grid(True)
+
+        axs[1, 1].plot(times_double, mod_double, marker="o", linestyle="-", color="blue", label="Double Gaussian")
+        axs[1, 1].set_xlabel("Time [s]")
+        axs[1, 1].set_ylabel("A/σ Sum")
+        axs[1, 1].set_title("Double Gaussian Fit (A/σ Sum)")
+        axs[1, 1].legend()
+        axs[1, 1].grid(True)
+
+        axs[1, 2].plot(times_split, mod_split, marker="o", linestyle="-", color="green", label="Split Fit")
+        axs[1, 2].set_xlabel("Time [s]")
+        axs[1, 2].set_ylabel("A/σ Sum")
+        axs[1, 2].set_title("Split Fit (A/σ Sum)")
+        axs[1, 2].legend()
+        axs[1, 2].grid(True)
+
+        fig.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=result_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        NavigationToolbar2Tk(canvas, result_window).pack(side="top", fill="x")
+
+    def plot_quantification_results_side_by_side(self, times_single, metric_single,
+                                                 times_double, metric_double,
+                                                 times_split, metric_split):
+        """
+        Opens a new window and plots the quantification results side by side.
+        Y-axis labels are set based on whether the modified metric is used:
+          - Single Gaussian: "A/σ" if modified, otherwise "Peak Area [a.u.]"
+          - Double Gaussian: "f/r" if modified, otherwise "Area Ratio"
+          - Split Fit: "(A_left/σ_left)+(A_right/σ_right)" if modified, otherwise "Area Ratio"
+        Only methods with non-empty time arrays are plotted.
+        """
         result_window = Toplevel(self.master)
         result_window.title("Peak Quantification Results (Comparison)")
-        fig, axs = plt.subplots(1, 3, figsize=(18, 4))
 
-        axs[0].plot(times_single, metrics_single, marker="o", linestyle="-", color="purple", label="Single Gaussian")
-        axs[0].set_xlabel("Time [s]")
-        axs[0].set_ylabel("Peak Area [a.u.]")
-        axs[0].set_title("Single Gaussian Fit")
-        axs[0].legend()
-        axs[0].grid(True)
+        if self.use_modified_metric.get():
+            label_single = "A/σ"
+            label_double = "A/σ Sum"
+            label_split = "A/σ Sum"
+        else:
+            label_single = "Peak Area [a.u.]"
+            label_double = "Area Ratio"
+            label_split = "Area Ratio"
 
-        axs[1].plot(times_double, metrics_double, marker="o", linestyle="-", color="blue", label="Double Gaussian")
-        axs[1].set_xlabel("Time [s]")
-        axs[1].set_ylabel("Area Ratio")
-        axs[1].set_title("Double Gaussian Fit")
-        axs[1].legend()
-        axs[1].grid(True)
+        valid_methods = []
+        if times_single is not None and len(times_single) > 0:
+            valid_methods.append(("Single Gaussian Fit", times_single, metric_single, label_single))
+        if times_double is not None and len(times_double) > 0:
+            valid_methods.append(("Double Gaussian Fit", times_double, metric_double, label_double))
+        if times_split is not None and len(times_split) > 0:
+            valid_methods.append(("Split Fit", times_split, metric_split, label_split))
 
-        axs[2].plot(times_sum, metrics_sum, marker="o", linestyle="-", color="green", label="Sum of Two Gaussians")
-        axs[2].set_xlabel("Time [s]")
-        axs[2].set_ylabel("Area Ratio")
-        axs[2].set_title("Split Fit")
-        axs[2].legend()
-        axs[2].grid(True)
+        if len(valid_methods) == 0:
+            messagebox.showerror("Error", "No valid quantification data to plot.")
+            return
 
+        n = len(valid_methods)
+        fig, axs = plt.subplots(1, n, figsize=(6 * n, 4))
+        if n == 1:
+            axs = [axs]
+        for ax, (title, times, metrics, ylabel) in zip(axs, valid_methods):
+            ax.plot(times, metrics, marker="o", linestyle="-")
+            ax.set_xlabel("Time [s]")
+            ax.set_ylabel(ylabel)
+            ax.set_title(title)
+            ax.legend([title])
+            ax.grid(True)
         fig.tight_layout()
         canvas = FigureCanvasTkAgg(fig, master=result_window)
         canvas.draw()
@@ -388,12 +495,9 @@ class PLAnalysisApp:
     def preview_peak_fit(self):
         """
         Opens a window to preview the fitted curves for the selected time point.
-        For each fitting method ticked in the quantification window (Single Gaussian,
-        Double Gaussian, Split Fit, and Multi-Gaussian), a separate subplot is shown,
-        allowing you to compare which fit works best.
-        The full spectrum is shown as blue dots while the fit is computed only on the
-        relevant wavelength region.
-        (No ratio is displayed in the title.)
+        For each fitting method ticked (Single Gaussian, Double Gaussian, and Split Fit),
+        a separate subplot is shown. The full spectrum is plotted as blue dots while the fit
+        is computed over the specified wavelength region. (No ratio is displayed in the title.)
         """
         preview_time = self.preview_time_option.get()
         try:
@@ -402,8 +506,17 @@ class PLAnalysisApp:
             messagebox.showerror("Error", "Selected preview time not found in relative times.")
             return
 
+        # Choose quantification data: use raw_counts if available; else flux data.
+        quant_data = self.raw_counts if self.contains_counts_flag and self.raw_counts is not None else \
+            (
+                self.luminescence_flux_density if self.contains_flux_flag and self.luminescence_flux_density is not None else None)
+        if quant_data is None:
+            messagebox.showerror("Error", "No quantification data available.")
+            return
+
         x_data = self.wavelength
-        y_data = self.raw_counts[:, j] if self.contains_counts_flag and self.raw_counts is not None else self.luminescence_flux_density[:, j] if self.contains_flux_flag and self.luminescence_flux_density is not None else None
+        y_data = quant_data[:, j]
+
         selected_fits = []
         if self.use_single_fit_var.get():
             selected_fits.append("single")
@@ -411,7 +524,6 @@ class PLAnalysisApp:
             selected_fits.append("double")
         if self.use_split_fit_var.get():
             selected_fits.append("split")
-
         if not selected_fits:
             messagebox.showerror("Error", "No fitting method selected for preview.")
             return
@@ -427,19 +539,16 @@ class PLAnalysisApp:
         # --- Single Gaussian Preview ---
         if "single" in selected_fits:
             try:
-                try:
-                    lower_single = float(self.fit_lower_bound.get())
-                    upper_single = float(self.fit_upper_bound.get())
-                    indices_single = np.where((x_data >= lower_single) & (x_data <= upper_single))[0]
-                except:
-                    indices_single = np.arange(len(x_data))
+                lower_single = float(self.fit_lower_bound.get())
+                upper_single = float(self.fit_upper_bound.get())
+                indices_single = np.where((x_data >= lower_single) & (x_data <= upper_single))[0]
                 x_fit = x_data[indices_single]
                 y_fit = y_data[indices_single]
                 amp_guess = float(self.single_a.get()) if self.single_a.get() else np.nanmax(y_fit)
                 mu_guess = float(self.single_mu.get()) if self.single_mu.get() else (x_fit[0] + x_fit[-1]) / 2
                 sigma_guess = float(self.single_sigma.get()) if self.single_sigma.get() else (x_fit[-1] - x_fit[0]) / 4
                 p0 = [amp_guess, mu_guess, sigma_guess]
-                popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0)
+                popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0, maxfev=int(self.maxfev.get()))
                 fitted_curve = gaussian(x_fit, *popt)
                 axs[plot_index].plot(x_data, y_data, "b.", label="Data")
                 axs[plot_index].plot(x_fit, fitted_curve, "r-", label="Single Gaussian")
@@ -453,12 +562,9 @@ class PLAnalysisApp:
         # --- Double Gaussian Preview (Constrained) ---
         if "double" in selected_fits:
             try:
-                try:
-                    lower_double = float(self.fit_lower_bound_double.get())
-                    upper_double = float(self.fit_upper_bound_double.get())
-                    indices_double = np.where((x_data >= lower_double) & (x_data <= upper_double))[0]
-                except:
-                    indices_double = np.arange(len(x_data))
+                lower_double = float(self.fit_lower_bound_double.get())
+                upper_double = float(self.fit_upper_bound_double.get())
+                indices_double = np.where((x_data >= lower_double) & (x_data <= upper_double))[0]
                 x_fit = x_data[indices_double]
                 y_fit = y_data[indices_double]
                 p0_double = [
@@ -470,7 +576,7 @@ class PLAnalysisApp:
                 bounds_constrained = ([0, x_fit[0], 0, 0, -np.inf, 0],
                                       [np.inf, x_fit[-1], np.inf, 1, np.inf, np.inf])
                 popt, _ = curve_fit(double_gaussian, x_fit, y_fit, p0=p0_double,
-                                    bounds=bounds_constrained, method='dogbox')
+                                    bounds=bounds_constrained, method='dogbox', maxfev=int(self.maxfev.get()))
                 fitted_curve = double_gaussian(x_fit, *popt)
                 axs[plot_index].plot(x_data, y_data, "b.", label="Data")
                 axs[plot_index].plot(x_fit, fitted_curve, "r-", label="Double Gaussian")
@@ -484,12 +590,8 @@ class PLAnalysisApp:
         # --- Split Fit Preview ---
         if "split" in selected_fits:
             try:
-                try:
-                    lower_double = float(self.fit_lower_bound_double.get())
-                    upper_double = float(self.fit_upper_bound_double.get())
-                except:
-                    lower_double = x_data[0]
-                    upper_double = x_data[-1]
+                lower_double = float(self.fit_lower_bound_double.get())
+                upper_double = float(self.fit_upper_bound_double.get())
                 indices_double = np.where((x_data >= lower_double) & (x_data <= upper_double))[0]
                 x_fit_full = x_data[indices_double]
                 y_fit_full = y_data[indices_double]
@@ -502,20 +604,19 @@ class PLAnalysisApp:
                 y_left = y_fit_full[left_mask]
                 x_right = x_fit_full[right_mask]
                 y_right = y_fit_full[right_mask]
-                # Use the double peak initial guesses if provided.
                 amp_left = float(self.double_a1.get()) if self.double_a1.get() else np.nanmax(y_left)
                 mu_left = float(self.double_mu1.get()) if self.double_mu1.get() else (x_left[0] + x_left[-1]) / 2
                 sigma_left = float(self.double_sigma1.get()) if self.double_sigma1.get() else (x_left[-1] - x_left[
                     0]) / 4
                 p0_left = [amp_left, mu_left, sigma_left]
-                popt_left, _ = curve_fit(gaussian, x_left, y_left, p0=p0_left)
+                popt_left, _ = curve_fit(gaussian, x_left, y_left, p0=p0_left, maxfev=int(self.maxfev.get()))
                 fitted_left = gaussian(x_left, *popt_left)
                 amp_right = float(self.double_a2.get()) if self.double_a2.get() else np.nanmax(y_right)
                 mu_right = float(self.double_mu2.get()) if self.double_mu2.get() else (x_right[0] + x_right[-1]) / 2
                 sigma_right = float(self.double_sigma2.get()) if self.double_sigma2.get() else (x_right[-1] - x_right[
                     0]) / 4
                 p0_right = [amp_right, mu_right, sigma_right]
-                popt_right, _ = curve_fit(gaussian, x_right, y_right, p0=p0_right)
+                popt_right, _ = curve_fit(gaussian, x_right, y_right, p0=p0_right, maxfev=int(self.maxfev.get()))
                 fitted_right = gaussian(x_right, *popt_right)
                 axs[plot_index].plot(x_data, y_data, "b.", label="Data")
                 axs[plot_index].plot(x_left, fitted_left, "m-", label="Left Peak")
@@ -524,27 +625,6 @@ class PLAnalysisApp:
                 axs[plot_index].legend()
             except Exception as e:
                 axs[plot_index].text(0.5, 0.5, f"Split fit failed:\n{e}", ha="center", va="center",
-                                     transform=axs[plot_index].transAxes)
-            plot_index += 1
-
-        # --- Multi-Gaussian Preview ---
-        if "multi" in selected_fits:
-            try:
-                total_fit, params_list = Multi_Gaussfit(x_data, y_data)
-                if len(params_list) >= 2:
-                    A1, mu1, sigma1 = params_list[0]
-                    A2, mu2, sigma2 = params_list[1]
-                    area1 = A1 * sigma1 * np.sqrt(2 * np.pi)
-                    area2 = A2 * sigma2 * np.sqrt(2 * np.pi)
-                    ratio = area2 / area1 if area1 != 0 else np.nan
-                else:
-                    ratio = np.nan
-                axs[plot_index].plot(x_data, y_data, "b.", label="Data")
-                axs[plot_index].plot(x_data, total_fit, "orange", label="Multi-Gaussian")
-                axs[plot_index].set_title("Multi-Gaussian Fit")
-                axs[plot_index].legend()
-            except Exception as e:
-                axs[plot_index].text(0.5, 0.5, f"Multi fit failed:\n{e}", ha="center", va="center",
                                      transform=axs[plot_index].transAxes)
             plot_index += 1
 
@@ -558,12 +638,9 @@ class PLAnalysisApp:
         """
         Applies the selected Gaussian fits to the spectral data within the specified wavelength ranges.
         Only uses time points where the checkboxes are ticked.
-        Computes metrics for:
-          - Single Gaussian: peak area (normalized if chosen)
-          - Double Gaussian: ratio of the two peak areas (from the constrained double Gaussian)
-          - Split Fit: ratio of areas from separate single Gaussian fits on left and right segments,
-                       computed as (peak1 / peak2) where peak2 corresponds to the right segment.
-        Then, opens a window with side-by-side plots for comparison.
+        For each fit method (Single, Double, and Split), both an area‐based metric and a modified metric (A/σ)
+        are computed. If "Show Both Metrics" is checked, both sets are plotted in two rows;
+        otherwise, only one set is used according to the "Use Modified Peak Metric" checkbox.
         """
         try:
             lower_single = float(self.fit_lower_bound.get())
@@ -582,20 +659,33 @@ class PLAnalysisApp:
         indices_single = np.where((self.wavelength >= lower_single) & (self.wavelength <= upper_single))[0]
         indices_double = np.where((self.wavelength >= lower_double) & (self.wavelength <= upper_double))[0]
 
+        # Select quantification data: use raw_counts if available; otherwise, use flux.
+        quant_data = self.raw_counts if self.contains_counts_flag and self.raw_counts is not None else \
+            (
+                self.luminescence_flux_density if self.contains_flux_flag and self.luminescence_flux_density is not None else None)
+        if quant_data is None:
+            messagebox.showerror("Error", "No quantification data available.")
+            return
+
         if self.use_single_fit_var.get() == 1 and len(indices_single) == 0:
             messagebox.showerror("Error", "No data points in the single Gaussian wavelength range.")
             return
-        if ((self.use_double_fit_var.get() or (
-                hasattr(self, "use_split_fit_var") and self.use_split_fit_var.get()) or self.use_multi_fit_var.get())
+        if ((self.use_double_fit_var.get() or (hasattr(self, "use_split_fit_var") and self.use_split_fit_var.get()))
                 and len(indices_double) == 0):
             messagebox.showerror("Error", "No data points in the double Gaussian wavelength range.")
             return
 
-        single_fit_metrics = []
+        # Prepare arrays for both metrics.
+        single_area_metrics = []
+        single_mod_metrics = []
         single_fit_times = []
-        double_fit_metrics = []
+
+        double_area_metrics = []
+        double_mod_metrics = []
         double_fit_times = []
-        split_fit_metrics = []
+
+        split_area_metrics = []
+        split_mod_metrics = []
         split_fit_times = []
 
         selected_time_indices = [i for var, i in self.time_checkboxes if var.get() == 1]
@@ -608,17 +698,18 @@ class PLAnalysisApp:
             # --- Single Gaussian Fit ---
             if self.use_single_fit_var.get() == 1:
                 x_single = self.wavelength[indices_single]
-                y_single = self.raw_counts[indices_single, j] if self.contains_counts_flag and self.raw_counts is not None else self.luminescence_flux_density[indices_single, j] if self.contains_flux_flag and self.luminescence_flux_density is not None else None
-
+                y_single = quant_data[indices_single, j]
                 try:
                     amp_guess = float(self.single_a.get()) if self.single_a.get() else np.nanmax(y_single)
                     mu_guess = float(self.single_mu.get()) if self.single_mu.get() else (x_single[0] + x_single[-1]) / 2
                     sigma_guess = float(self.single_sigma.get()) if self.single_sigma.get() else (x_single[-1] -
                                                                                                   x_single[0]) / 4
                     p0 = [amp_guess, mu_guess, sigma_guess]
-                    popt, _ = curve_fit(gaussian, x_single, y_single, p0=p0)
-                    area = popt[0] * popt[2] * np.sqrt(2 * np.pi)
-                    single_fit_metrics.append(area)
+                    popt, _ = curve_fit(gaussian, x_single, y_single, p0=p0, maxfev=int(self.maxfev.get()))
+                    area_metric = popt[0] * popt[2] * np.sqrt(2 * np.pi)
+                    mod_metric = popt[0] / popt[2] if popt[2] != 0 else np.nan
+                    single_area_metrics.append(area_metric)
+                    single_mod_metrics.append(mod_metric)
                     single_fit_times.append(t)
                 except Exception as e:
                     print(f"Single fit failed for time index {j}: {e}")
@@ -626,10 +717,7 @@ class PLAnalysisApp:
             # --- Double Gaussian Fit (Constrained) ---
             if self.use_double_fit_var.get() == 1:
                 x_double = self.wavelength[indices_double]
-                y_double = self.raw_counts[
-                    indices_double, j] if self.contains_counts_flag and self.raw_counts is not None else \
-                    self.luminescence_flux_density[
-                        indices_double, j] if self.contains_flux_flag and self.luminescence_flux_density is not None else None
+                y_double = quant_data[indices_double, j]
                 try:
                     p0_double = [
                         float(self.double_a1.get()) if self.double_a1.get() else np.nanmax(y_double) / 2,
@@ -641,11 +729,14 @@ class PLAnalysisApp:
                     bounds_constrained = ([0, x_double[0], 0, 0, -np.inf, 0],
                                           [np.inf, x_double[-1], np.inf, 1, np.inf, np.inf])
                     popt, _ = curve_fit(double_gaussian, x_double, y_double, p0=p0_double,
-                                        bounds=bounds_constrained, method='dogbox')
+                                        bounds=bounds_constrained, method='dogbox', maxfev=int(self.maxfev.get()))
                     area1 = popt[0] * popt[2] * np.sqrt(2 * np.pi)
                     area2 = (popt[0] * popt[3]) * (popt[2] * popt[5]) * np.sqrt(2 * np.pi)
-                    ratio = area1 / area2 if area2 != 0 else np.nan
-                    double_fit_metrics.append(ratio)
+                    area_ratio = area2 / area1 if area1 != 0 else np.nan
+                    mod_ratio = (popt[0] / popt[2] if popt[2] != 0 else np.nan) + \
+                                 ((popt[0]*popt[3]) / (popt[2]*popt[5]) if popt[2]*popt[5] != 0 else np.nan)
+                    double_area_metrics.append(area_ratio)
+                    double_mod_metrics.append(mod_ratio)
                     double_fit_times.append(t)
                 except Exception as e:
                     print(f"Double fit failed for time index {j}: {e}")
@@ -654,9 +745,7 @@ class PLAnalysisApp:
             if hasattr(self, "use_split_fit_var") and self.use_split_fit_var.get():
                 try:
                     x_full = self.wavelength[indices_double]
-                    y_full = self.raw_counts[indices_double, j] if self.contains_counts_flag and self.raw_counts is not None else \
-                    self.luminescence_flux_density[indices_double, j] if self.contains_flux_flag and self.luminescence_flux_density is not None else None
-
+                    y_full = quant_data[indices_double, j]
                     mid = (lower_double + upper_double) / 2
                     left_mask = x_full < mid
                     right_mask = x_full >= mid
@@ -666,36 +755,72 @@ class PLAnalysisApp:
                     y_left = y_full[left_mask]
                     x_right = x_full[right_mask]
                     y_right = y_full[right_mask]
-                    # Use double peak initial guesses if provided:
-                    amp_left = float(self.double_a1.get()) if self.double_a1.get() else np.nanmax(y_left)
-                    mu_left = float(self.double_mu1.get()) if self.double_mu1.get() else (x_left[0] + x_left[-1]) / 2
-                    sigma_left = float(self.double_sigma1.get()) if self.double_sigma1.get() else (x_left[-1] - x_left[
-                        0]) / 4
-                    p0_left = [amp_left, mu_left, sigma_left]
-                    popt_left, _ = curve_fit(gaussian, x_left, y_left, p0=p0_left)
-                    amp_right = float(self.double_a2.get()) if self.double_a2.get() else np.nanmax(y_right)
-                    mu_right = float(self.double_mu2.get()) if self.double_mu2.get() else (x_right[0] + x_right[-1]) / 2
-                    sigma_right = float(self.double_sigma2.get()) if self.double_sigma2.get() else (x_right[-1] -
-                                                                                                    x_right[0]) / 4
-                    p0_right = [amp_right, mu_right, sigma_right]
-                    popt_right, _ = curve_fit(gaussian, x_right, y_right, p0=p0_right)
+                    p0_left = [float(self.double_a1.get()) if self.double_a1.get() else np.nanmax(y_left),
+                               float(self.double_mu1.get()) if self.double_mu1.get() else (x_left[0] + x_left[-1]) / 2,
+                               float(self.double_sigma1.get()) if self.double_sigma1.get() else (x_left[-1] - x_left[
+                                   0]) / 4]
+                    popt_left, _ = curve_fit(gaussian, x_left, y_left, p0=p0_left, maxfev=int(self.maxfev.get()))
+                    p0_right = [float(self.double_a2.get()) if self.double_a2.get() else np.nanmax(y_right),
+                                float(self.double_mu2.get()) if self.double_mu2.get() else (x_right[0] + x_right[
+                                    -1]) / 2,
+                                float(self.double_sigma2.get()) if self.double_sigma2.get() else (x_right[-1] - x_right[
+                                    0]) / 4]
+                    popt_right, _ = curve_fit(gaussian, x_right, y_right, p0=p0_right, maxfev=int(self.maxfev.get()))
                     area_left = popt_left[0] * popt_left[2] * np.sqrt(2 * np.pi)
                     area_right = popt_right[0] * popt_right[2] * np.sqrt(2 * np.pi)
-                    # Always compute peak ratio as (peak2 / peak1)
-                    ratio = area_left / area_right if area_right != 0 else np.nan
-                    split_fit_metrics.append(ratio)
+                    ratio_area = area_right / area_left if area_left != 0 else np.nan
+                    ratio_mod = (popt_right[0] / popt_right[2] if popt_right[2]!=0 else np.nan) + \
+                                 (popt_left[0] / popt_left[2] if popt_left[2]!=0 else np.nan)
+                    split_area_metrics.append(ratio_area)
+                    split_mod_metrics.append(ratio_mod)
                     split_fit_times.append(t)
                 except Exception as e:
                     print(f"Split fit failed for time index {j}: {e}")
 
-        if self.normalize_fit_var.get() == 1:
-            single_fit_metrics = single_fit_metrics / np.max(single_fit_metrics)
-
         quant_window.destroy()
 
-        self.plot_quantification_results_side_by_side(single_fit_times, single_fit_metrics,
-                                                      double_fit_times, double_fit_metrics,
-                                                      split_fit_times, split_fit_metrics)
+        # If normalization is enabled, normalize each metric array so that its maximum equals 1.
+        if self.normalize_fit_var.get():
+            if len(single_area_metrics) > 0:
+                single_area_metrics = np.array(single_area_metrics)
+                if np.max(single_area_metrics) != 0:
+                    single_area_metrics = single_area_metrics / np.max(single_area_metrics)
+            if len(single_mod_metrics) > 0:
+                single_mod_metrics = np.array(single_mod_metrics)
+                if np.max(single_mod_metrics) != 0:
+                    single_mod_metrics = single_mod_metrics / np.max(single_mod_metrics)
+            if len(double_area_metrics) > 0:
+                double_area_metrics = np.array(double_area_metrics)
+                if np.max(double_area_metrics) != 0:
+                    double_area_metrics = double_area_metrics / np.max(double_area_metrics)
+            if len(double_mod_metrics) > 0:
+                double_mod_metrics = np.array(double_mod_metrics)
+                if np.max(double_mod_metrics) != 0:
+                    double_mod_metrics = double_mod_metrics / np.max(double_mod_metrics)
+            if len(split_area_metrics) > 0:
+                split_area_metrics = np.array(split_area_metrics)
+                if np.max(split_area_metrics) != 0:
+                    split_area_metrics = split_area_metrics / np.max(split_area_metrics)
+            if len(split_mod_metrics) > 0:
+                split_mod_metrics = np.array(split_mod_metrics)
+                if np.max(split_mod_metrics) != 0:
+                    split_mod_metrics = split_mod_metrics / np.max(split_mod_metrics)
+
+        # If the "Show Both Metrics" option is checked, plot both rows.
+        if self.combine_metric_plots.get():
+            self.plot_quantification_results_combined(single_fit_times, single_area_metrics, single_mod_metrics,
+                                                      double_fit_times, double_area_metrics, double_mod_metrics,
+                                                      split_fit_times, split_area_metrics, split_mod_metrics)
+        else:
+            # Otherwise, plot only one set based on the "Use Modified Peak Metric" option.
+            if self.use_modified_metric.get():
+                self.plot_quantification_results_side_by_side(single_fit_times, single_mod_metrics,
+                                                              double_fit_times, double_mod_metrics,
+                                                              split_fit_times, split_mod_metrics)
+            else:
+                self.plot_quantification_results_side_by_side(single_fit_times, single_area_metrics,
+                                                              double_fit_times, double_area_metrics,
+                                                              split_fit_times, split_area_metrics)
 
     def show_option_info(self, filter_type):
         info_messages = {
