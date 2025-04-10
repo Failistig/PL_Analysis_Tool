@@ -1,8 +1,9 @@
 import tkinter as tk
 import pandas as pd
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel, StringVar, messagebox, Text, Scrollbar, Canvas, OptionMenu
+from tkinter import Tk, filedialog, Button, Label, Checkbutton, IntVar, Entry, Frame, Toplevel, StringVar, messagebox, Text, Scrollbar, Canvas, OptionMenu, Radiobutton
 from tkinter.simpledialog import askstring
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image, ImageTk
@@ -10,10 +11,13 @@ from datetime import datetime
 from scipy.optimize import curve_fit
 from matplotlib.ticker import MaxNLocator
 
-
-#####################
-# Fitting Functions #
-#####################
+plt.rcParams.update({
+    "font.size": 14,         # General font size
+    "axes.titlesize": 16,      # Title size
+    "axes.labelsize": 14,      # Axis label size
+    "xtick.labelsize": 12,     # X tick labels
+    "ytick.labelsize": 12      # Y tick labels
+})
 
 def gaussian(x, A, mu, sigma):
     sigma = max(sigma, 1e-6)  # Prevents zero sigma
@@ -65,6 +69,21 @@ def Multi_Gaussfit(x, y, max_gaussians=5):
             break
     return total_fit, params_list
 
+def add_alternate_legend_vertical(ax, labels, colors):
+    """Adds a vertical color-coded legend manually to the right of the plot."""
+    if not labels:
+        return
+    ax.legend().remove()  # Remove the default legend if it exists
+    for i, (label, color) in enumerate(zip(labels, colors)):
+        ax.text(1.02, 1 - i * 0.05, label, transform=ax.transAxes,
+                color=color, fontsize=8, va='top')
+
+def parse_time(time_str):
+    try:
+        return float(time_str.rstrip("s"))
+    except Exception:
+        return 0.0
+
 class PLAnalysisApp:
     def __init__(self, master):
         self.master = master
@@ -105,19 +124,15 @@ class PLAnalysisApp:
         self.plot_spectra_var = IntVar(value=1)
         self.plot_luminescence_flux_density_var = IntVar(value=1)
         self.plot_absolute_gradient_var = IntVar(value=1)
-        self.plot_log_spectra_var = IntVar(value=1)
-        self.plot_log_luminescence_flux_density_var = IntVar(value=1)
-        self.plot_log_absolute_gradient_var = IntVar(value=1)
-        self.plot_norm_spectra_var = IntVar(value=1)
-        self.plot_norm_luminescence_flux_density_var = IntVar(value=1)
-        self.plot_norm_absolute_gradient_var = IntVar(value=1)
-        self.show_legend_var = IntVar(value=1)
-        self.use_single_fit_var = IntVar(value=1)  # 1 = use single Gaussian fit
-        self.use_double_fit_var = IntVar(value=0)  # 1 = use double Gaussian fit
-        self.fit_lower_bound_double = StringVar()
-        self.fit_upper_bound_double = StringVar()
+        self.plot_log_spectra_var = IntVar(value=0)
+        self.plot_log_luminescence_flux_density_var = IntVar(value=0)
+        self.plot_log_absolute_gradient_var = IntVar(value=0)
+        self.plot_norm_spectra_var = IntVar(value=0)
+        self.plot_norm_luminescence_flux_density_var = IntVar(value=0)
+        self.plot_norm_absolute_gradient_var = IntVar(value=0)
+        self.show_legend_var = IntVar(value=0)
         self.preview_time_option = StringVar()  # For dropdown preview time; will be set after file load
-        self.normalize_fit_var = IntVar(value=0)
+        self.normalize_fit_var = IntVar(value=1)
 
         # Quantification fit options variables
         self.fit_type_var = StringVar(value="single")  # "single" or "double"
@@ -138,8 +153,9 @@ class PLAnalysisApp:
         self.use_double_fit_var = tk.IntVar(value=1)
         self.normalize_fit_var = tk.IntVar(value=1)
         self.use_split_fit_var = IntVar(value=1)
-        self.use_modified_metric = IntVar(value=0)
+        self.use_modified_metric = IntVar(value=1)
         self.maxfev = StringVar(value="800")
+        self.quant_layout_option = StringVar(value="2x3")
 
         self.fit_lower_bound = StringVar(value="500")
         self.fit_upper_bound = StringVar(value="700")
@@ -158,7 +174,8 @@ class PLAnalysisApp:
         self.double_a2 = StringVar(value="")
         self.double_mu2 = StringVar(value="760")
         self.double_sigma2 = StringVar(value="3")
-        self.combine_metric_plots = IntVar(value=0)
+        self.combine_metric_plots = IntVar(value=1)
+        self.layout_2x2_option = IntVar(value=0)
 
         # Save options
         self.save_raw_var = IntVar(value=1)
@@ -364,75 +381,209 @@ class PLAnalysisApp:
                                                                                                            pady=5,
                                                                                                            sticky="w")
 
-        Button(quant_window, text="Apply Fit", command=lambda: self.apply_peak_fit(quant_window)).grid(row=11, column=0,
+        Button(quant_window, text="Apply Fit", command=lambda: self.apply_peak_fit(quant_window)).grid(row=12, column=0,
                                                                                                        columnspan=4,
                                                                                                        pady=10)
-        Button(quant_window, text="Preview Fit", command=self.preview_peak_fit).grid(row=11, column=4, columnspan=4,
+        Button(quant_window, text="Preview Fit", command=self.preview_peak_fit).grid(row=12, column=4, columnspan=4,
                                                                                      pady=10)
-        # --- New Option: Show Both Metrics (Combined Plot) ---
+
         Checkbutton(quant_window, text="Show Both Metrics", variable=self.combine_metric_plots).grid(row=10, column=0,
                                                                                                      padx=10, pady=5,
                                                                                                      sticky="w")
+        # --- New Option: Quantification Layout ---
+        Label(quant_window, text="Select Quantification Layout:", font=("Arial", 12)).grid(row=11, column=0,
+                                                                                           columnspan=2, padx=10,
+                                                                                           pady=5, sticky="w")
+        # Create a StringVar to hold the layout choice if not already defined in __init__
+        if not hasattr(self, "quant_layout_option"):
+            self.quant_layout_option = StringVar(value="2x3")
 
-    def plot_quantification_results_combined(self, times_single, area_single, mod_single,
+        # Radio buttons for layout options:
+        Radiobutton(quant_window, text="2x3 Layout (Separate Metrics)", variable=self.quant_layout_option,
+                    value="2x3").grid(row=11, column=2, padx=5, pady=5, sticky="w")
+        Radiobutton(quant_window, text="1x3 Layout (Combined Curves)", variable=self.quant_layout_option,
+                    value="1x3").grid(row=11, column=3, padx=5, pady=5, sticky="w")
+        Radiobutton(quant_window, text="2x2 Layout (Data + Metrics)", variable=self.quant_layout_option,
+                    value="2x2").grid(row=11, column=4, padx=5, pady=5, sticky="w")
+
+    def plot_quantification_results_combined_in_one(self,
+                                                    times_single, area_single, mod_single,
+                                                    times_double, area_double, mod_double,
+                                                    times_split, area_split, mod_split):
+        # Create one row with three subplots (for Single, Double, Split)
+        fig, axs = plt.subplots(1, 3, figsize=(18, 5))
+        # Single Gaussian subplot
+        axs[0].plot(times_single, area_single, marker='o', linestyle='-', color='purple', label='Area')
+        axs[0].plot(times_single, mod_single, marker='o', linestyle='--', color='orange', label='A/σ')
+        axs[0].set_xlabel("Time (s)")
+        axs[0].set_ylabel("Metric")
+        axs[0].set_title("Single Gaussian Quantification")
+        axs[0].legend()
+        axs[0].grid(True)
+        # Double Gaussian subplot
+        axs[1].plot(times_double, area_double, marker='o', linestyle='-', color='blue', label='Area')
+        axs[1].plot(times_double, mod_double, marker='o', linestyle='--', color='green', label='A/σ Sum')
+        axs[1].set_xlabel("Time (s)")
+        axs[1].set_title("Double Gaussian Quantification")
+        axs[1].legend()
+        axs[1].grid(True)
+        # Split Fit subplot
+        axs[2].plot(times_split, area_split, marker='o', linestyle='-', color='red', label='Area')
+        axs[2].plot(times_split, mod_split, marker='o', linestyle='--', color='brown', label='A/σ Sum')
+        axs[2].set_xlabel("Time (s)")
+        axs[2].set_title("Split Fit Quantification")
+        axs[2].legend()
+        axs[2].grid(True)
+        fig.tight_layout()
+        result_window = Toplevel(self.master)
+        result_window.title("Combined Quantification Results (Both Metrics per Method)")
+        canvas = FigureCanvasTkAgg(fig, master=result_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        NavigationToolbar2Tk(canvas, result_window).pack(side="top", fill="x")
+
+    def plot_quantification_results_combined(self,
+                                             times_single, area_single, mod_single,
                                              times_double, area_double, mod_double,
                                              times_split, area_split, mod_split):
         """
-        Opens a window and plots the quantification results in two rows.
-        The top row shows the standard (area-based) metrics and the bottom row shows
-        the modified metrics.
+        2x3 layout:
+          Top row: three subplots showing the area‐based metrics (for Single, Double, and Split)
+          Bottom row: three subplots showing the modified (A/σ) metrics.
         """
         result_window = Toplevel(self.master)
-        result_window.title("Peak Quantification Results (Combined Metrics)")
-
-        # Determine the number of columns (we assume all methods are plotted)
-        n_cols = 3  # Single, Double, Split
-
-        fig, axs = plt.subplots(2, n_cols, figsize=(6 * n_cols, 8))
+        result_window.title("Peak Quantification Results (2x3 Layout)")
+        fig, axs = plt.subplots(2, 3, figsize=(18, 8))
 
         # Top row: area metrics
-        axs[0, 0].plot(times_single, area_single, marker="o", linestyle="-", color="purple", label="Single Gaussian")
+        axs[0, 0].plot(times_single, area_single, marker="o", linestyle="-", color="purple")
         axs[0, 0].set_xlabel("Time [s]")
         axs[0, 0].set_ylabel("Peak Area [a.u.]")
-        axs[0, 0].set_title("Single Gaussian Fit (Area)")
-        axs[0, 0].legend()
+        axs[0, 0].set_title("Single Gaussian (Area)")
         axs[0, 0].grid(True)
 
-        axs[0, 1].plot(times_double, area_double, marker="o", linestyle="-", color="blue", label="Double Gaussian")
+        axs[0, 1].plot(times_double, area_double, marker="o", linestyle="-", color="blue")
         axs[0, 1].set_xlabel("Time [s]")
         axs[0, 1].set_ylabel("Area Ratio")
-        axs[0, 1].set_title("Double Gaussian Fit (Area Ratio)")
-        axs[0, 1].legend()
+        axs[0, 1].set_title("Double Gaussian (Area)")
         axs[0, 1].grid(True)
 
-        axs[0, 2].plot(times_split, area_split, marker="o", linestyle="-", color="green", label="Split Fit")
+        axs[0, 2].plot(times_split, area_split, marker="o", linestyle="-", color="green")
         axs[0, 2].set_xlabel("Time [s]")
         axs[0, 2].set_ylabel("Area Ratio")
-        axs[0, 2].set_title("Split Fit (Area Ratio)")
-        axs[0, 2].legend()
+        axs[0, 2].set_title("Split Fit (Area)")
         axs[0, 2].grid(True)
 
         # Bottom row: modified metrics
-        axs[1, 0].plot(times_single, mod_single, marker="o", linestyle="-", color="purple", label="Single Gaussian")
+        axs[1, 0].plot(times_single, mod_single, marker="o", linestyle="-", color="purple")
         axs[1, 0].set_xlabel("Time [s]")
         axs[1, 0].set_ylabel("A/σ")
-        axs[1, 0].set_title("Single Gaussian Fit (A/σ)")
-        axs[1, 0].legend()
+        axs[1, 0].set_title("Single Gaussian (A/σ)")
         axs[1, 0].grid(True)
 
-        axs[1, 1].plot(times_double, mod_double, marker="o", linestyle="-", color="blue", label="Double Gaussian")
+        axs[1, 1].plot(times_double, mod_double, marker="o", linestyle="-", color="blue")
         axs[1, 1].set_xlabel("Time [s]")
         axs[1, 1].set_ylabel("A/σ Sum")
-        axs[1, 1].set_title("Double Gaussian Fit (A/σ Sum)")
-        axs[1, 1].legend()
+        axs[1, 1].set_title("Double Gaussian (A/σ Sum)")
         axs[1, 1].grid(True)
 
-        axs[1, 2].plot(times_split, mod_split, marker="o", linestyle="-", color="green", label="Split Fit")
+        axs[1, 2].plot(times_split, mod_split, marker="o", linestyle="-", color="green")
         axs[1, 2].set_xlabel("Time [s]")
         axs[1, 2].set_ylabel("A/σ Sum")
         axs[1, 2].set_title("Split Fit (A/σ Sum)")
-        axs[1, 2].legend()
         axs[1, 2].grid(True)
+
+        fig.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=result_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        NavigationToolbar2Tk(canvas, result_window).pack(side="top", fill="x")
+
+    def plot_quantification_results_1x3(self,
+                                        times_single, area_single, mod_single,
+                                        times_double, area_double, mod_double,
+                                        times_split, area_split, mod_split):
+        """
+        1x3 layout (combined curves):
+          For each method (Single, Double, Split) the area and modified metrics are both plotted
+          in the same axes (with different colors/linestyles and a legend).
+        """
+        result_window = Toplevel(self.master)
+        result_window.title("Peak Quantification Results (1x3 Combined)")
+        fig, axs = plt.subplots(1, 3, figsize=(18, 5))
+
+        # For each method, plot two curves (area and modified)
+        methods = [
+            ("Single Gaussian", times_single, area_single, mod_single),
+            ("Double Gaussian", times_double, area_double, mod_double),
+            ("Split Fit", times_split, area_split, mod_split)
+        ]
+        for ax, (title, times, area_metric, mod_metric) in zip(axs, methods):
+            # Plot area metric and modified metric on the same axes.
+            ax.plot(times, area_metric, marker="o", linestyle="-", color="red", label="Area")
+            ax.plot(times, mod_metric, marker="s", linestyle="--", color="blue", label="A/σ")
+            ax.set_xlabel("Time [s]")
+            ax.set_ylabel("Metric")
+            ax.set_title(title)
+            ax.legend()
+            ax.grid(True)
+
+        fig.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=result_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        NavigationToolbar2Tk(canvas, result_window).pack(side="top", fill="x")
+
+    def plot_quantification_results_2x2(self,
+                                        times_single, area_single, mod_single,
+                                        times_double, area_double, mod_double,
+                                        times_split, area_split, mod_split):
+        """
+        2x2 layout:
+          Top left: Plot of raw data (or flux) [you can choose which one]
+          Top right: Combined Single Gaussian (both metrics combined in one plot)
+          Bottom left: Combined Double Gaussian (both metrics combined)
+          Bottom right: Combined Split Fit (both metrics combined)
+          (In each quantification subplot, both the area and modified curves are plotted together.)
+        """
+        result_window = Toplevel(self.master)
+        result_window.title("Quantification & Data Comparison (2x2 Layout)")
+        fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+
+        if self.contains_counts_flag:
+            self.plot_spectra(axs[0, 0])
+        elif self.contains_flux_flag:
+            self.plot_luminescence_flux_density(axs[0, 0])
+
+        # For the quantification subplots, we assume that times_data, data_metric, data_mod_metric
+        # are for the single Gaussian fit, and times_quant, quant_area, quant_mod are lists/dicts for double & split.
+        # Here we use our previously computed arrays for single, double and split.
+        # Top-right: Single Gaussian quantification (combined curves)
+        axs[0, 1].plot(times_single, area_single, marker="o", linestyle="-", color="red", label="Area")
+        axs[0, 1].plot(times_single, mod_single, marker="s", linestyle="--", color="blue", label="A/σ")
+        axs[0, 1].set_xlabel("Time [s]")
+        axs[0, 1].set_ylabel("Metric")
+        axs[0, 1].set_title("Single Gaussian Quantification")
+        axs[0, 1].legend()
+        axs[0, 1].grid(True)
+
+        # Bottom-left: Double Gaussian quantification (combined curves)
+        axs[1, 0].plot(times_double, area_double, marker="o", linestyle="-", color="red", label="Area")
+        axs[1, 0].plot(times_double, mod_double, marker="s", linestyle="--", color="blue", label="A/σ")
+        axs[1, 0].set_xlabel("Time [s]")
+        axs[1, 0].set_ylabel("Metric")
+        axs[1, 0].set_title("Double Gaussian Quantification")
+        axs[1, 0].legend()
+        axs[1, 0].grid(True)
+
+        # Bottom-right: Split Fit quantification (combined curves)
+        axs[1, 1].plot(times_split, area_split, marker="o", linestyle="-", color="red", label="Area")
+        axs[1, 1].plot(times_split, mod_split, marker="s", linestyle="--", color="blue", label="A/σ")
+        axs[1, 1].set_xlabel("Time [s]")
+        axs[1, 1].set_ylabel("Metric")
+        axs[1, 1].set_title("Split Fit Quantification")
+        axs[1, 1].legend()
+        axs[1, 1].grid(True)
 
         fig.tight_layout()
         canvas = FigureCanvasTkAgg(fig, master=result_window)
@@ -637,10 +788,9 @@ class PLAnalysisApp:
     def apply_peak_fit(self, quant_window):
         """
         Applies the selected Gaussian fits to the spectral data within the specified wavelength ranges.
-        Only uses time points where the checkboxes are ticked.
-        For each fit method (Single, Double, and Split), both an area‐based metric and a modified metric (A/σ)
-        are computed. If "Show Both Metrics" is checked, both sets are plotted in two rows;
-        otherwise, only one set is used according to the "Use Modified Peak Metric" checkbox.
+        Computes both an area‐based metric and a modified metric (A/σ) for each fit method.
+        If "Show Both Metrics Combined" is checked, then the layout option (2x3, 1x3, or 2x2) is used;
+        otherwise, only one metric type is plotted based on the "Use Modified Peak Metric" checkbox.
         """
         try:
             lower_single = float(self.fit_lower_bound.get())
@@ -648,7 +798,6 @@ class PLAnalysisApp:
         except ValueError:
             messagebox.showerror("Error", "Please enter valid single Gaussian wavelength bounds.")
             return
-
         try:
             lower_double = float(self.fit_lower_bound_double.get())
             upper_double = float(self.fit_upper_bound_double.get())
@@ -659,10 +808,10 @@ class PLAnalysisApp:
         indices_single = np.where((self.wavelength >= lower_single) & (self.wavelength <= upper_single))[0]
         indices_double = np.where((self.wavelength >= lower_double) & (self.wavelength <= upper_double))[0]
 
-        # Select quantification data: use raw_counts if available; otherwise, use flux.
-        quant_data = self.raw_counts if self.contains_counts_flag and self.raw_counts is not None else \
-            (
-                self.luminescence_flux_density if self.contains_flux_flag and self.luminescence_flux_density is not None else None)
+        quant_data = (self.raw_counts if (self.contains_counts_flag and self.raw_counts is not None)
+                      else (
+            self.luminescence_flux_density if (self.contains_flux_flag and self.luminescence_flux_density is not None)
+            else None))
         if quant_data is None:
             messagebox.showerror("Error", "No quantification data available.")
             return
@@ -670,23 +819,14 @@ class PLAnalysisApp:
         if self.use_single_fit_var.get() == 1 and len(indices_single) == 0:
             messagebox.showerror("Error", "No data points in the single Gaussian wavelength range.")
             return
-        if ((self.use_double_fit_var.get() or (hasattr(self, "use_split_fit_var") and self.use_split_fit_var.get()))
-                and len(indices_double) == 0):
+        if ((self.use_double_fit_var.get() or self.use_split_fit_var.get()) and len(indices_double) == 0):
             messagebox.showerror("Error", "No data points in the double Gaussian wavelength range.")
             return
 
-        # Prepare arrays for both metrics.
-        single_area_metrics = []
-        single_mod_metrics = []
-        single_fit_times = []
-
-        double_area_metrics = []
-        double_mod_metrics = []
-        double_fit_times = []
-
-        split_area_metrics = []
-        split_mod_metrics = []
-        split_fit_times = []
+        # Prepare arrays for each metric for each method.
+        single_area_metrics, single_mod_metrics, single_fit_times = [], [], []
+        double_area_metrics, double_mod_metrics, double_fit_times = [], [], []
+        split_area_metrics, split_mod_metrics, split_fit_times = [], [], []
 
         selected_time_indices = [i for var, i in self.time_checkboxes if var.get() == 1]
         if not selected_time_indices:
@@ -696,7 +836,7 @@ class PLAnalysisApp:
         for j in selected_time_indices:
             t = float(self.relative_times[j].replace("s", ""))
             # --- Single Gaussian Fit ---
-            if self.use_single_fit_var.get() == 1:
+            if self.use_single_fit_var.get():
                 x_single = self.wavelength[indices_single]
                 y_single = quant_data[indices_single, j]
                 try:
@@ -715,7 +855,7 @@ class PLAnalysisApp:
                     print(f"Single fit failed for time index {j}: {e}")
 
             # --- Double Gaussian Fit (Constrained) ---
-            if self.use_double_fit_var.get() == 1:
+            if self.use_double_fit_var.get():
                 x_double = self.wavelength[indices_double]
                 y_double = quant_data[indices_double, j]
                 try:
@@ -734,7 +874,7 @@ class PLAnalysisApp:
                     area2 = (popt[0] * popt[3]) * (popt[2] * popt[5]) * np.sqrt(2 * np.pi)
                     area_ratio = area2 / area1 if area1 != 0 else np.nan
                     mod_ratio = (popt[0] / popt[2] if popt[2] != 0 else np.nan) + \
-                                 ((popt[0]*popt[3]) / (popt[2]*popt[5]) if popt[2]*popt[5] != 0 else np.nan)
+                                ((popt[0] * popt[3]) / (popt[2] * popt[5]) if popt[2] * popt[5] != 0 else np.nan)
                     double_area_metrics.append(area_ratio)
                     double_mod_metrics.append(mod_ratio)
                     double_fit_times.append(t)
@@ -742,7 +882,7 @@ class PLAnalysisApp:
                     print(f"Double fit failed for time index {j}: {e}")
 
             # --- Split Fit (Separate Single Fits on Left & Right) ---
-            if hasattr(self, "use_split_fit_var") and self.use_split_fit_var.get():
+            if self.use_split_fit_var.get():
                 try:
                     x_full = self.wavelength[indices_double]
                     y_full = quant_data[indices_double, j]
@@ -769,50 +909,49 @@ class PLAnalysisApp:
                     area_left = popt_left[0] * popt_left[2] * np.sqrt(2 * np.pi)
                     area_right = popt_right[0] * popt_right[2] * np.sqrt(2 * np.pi)
                     ratio_area = area_right / area_left if area_left != 0 else np.nan
-                    ratio_mod = (popt_right[0] / popt_right[2] if popt_right[2]!=0 else np.nan) + \
-                                 (popt_left[0] / popt_left[2] if popt_left[2]!=0 else np.nan)
+                    ratio_mod = (popt_right[0] / popt_right[2] if popt_right[2] != 0 else np.nan) + \
+                                (popt_left[0] / popt_left[2] if popt_left[2] != 0 else np.nan)
                     split_area_metrics.append(ratio_area)
                     split_mod_metrics.append(ratio_mod)
                     split_fit_times.append(t)
                 except Exception as e:
                     print(f"Split fit failed for time index {j}: {e}")
 
+        # Normalize metrics if enabled.
+        if self.normalize_fit_var.get():
+            def normalize(arr):
+                arr = np.array(arr)
+                return arr / np.max(arr) if arr.size > 0 and np.max(arr) != 0 else arr
+
+            single_area_metrics = normalize(single_area_metrics)
+            single_mod_metrics = normalize(single_mod_metrics)
+            double_area_metrics = normalize(double_area_metrics)
+            double_mod_metrics = normalize(double_mod_metrics)
+            split_area_metrics = normalize(split_area_metrics)
+            split_mod_metrics = normalize(split_mod_metrics)
+
         quant_window.destroy()
 
-        # If normalization is enabled, normalize each metric array so that its maximum equals 1.
-        if self.normalize_fit_var.get():
-            if len(single_area_metrics) > 0:
-                single_area_metrics = np.array(single_area_metrics)
-                if np.max(single_area_metrics) != 0:
-                    single_area_metrics = single_area_metrics / np.max(single_area_metrics)
-            if len(single_mod_metrics) > 0:
-                single_mod_metrics = np.array(single_mod_metrics)
-                if np.max(single_mod_metrics) != 0:
-                    single_mod_metrics = single_mod_metrics / np.max(single_mod_metrics)
-            if len(double_area_metrics) > 0:
-                double_area_metrics = np.array(double_area_metrics)
-                if np.max(double_area_metrics) != 0:
-                    double_area_metrics = double_area_metrics / np.max(double_area_metrics)
-            if len(double_mod_metrics) > 0:
-                double_mod_metrics = np.array(double_mod_metrics)
-                if np.max(double_mod_metrics) != 0:
-                    double_mod_metrics = double_mod_metrics / np.max(double_mod_metrics)
-            if len(split_area_metrics) > 0:
-                split_area_metrics = np.array(split_area_metrics)
-                if np.max(split_area_metrics) != 0:
-                    split_area_metrics = split_area_metrics / np.max(split_area_metrics)
-            if len(split_mod_metrics) > 0:
-                split_mod_metrics = np.array(split_mod_metrics)
-                if np.max(split_mod_metrics) != 0:
-                    split_mod_metrics = split_mod_metrics / np.max(split_mod_metrics)
-
-        # If the "Show Both Metrics" option is checked, plot both rows.
+        # Now decide which plotting function to call.
         if self.combine_metric_plots.get():
-            self.plot_quantification_results_combined(single_fit_times, single_area_metrics, single_mod_metrics,
-                                                      double_fit_times, double_area_metrics, double_mod_metrics,
-                                                      split_fit_times, split_area_metrics, split_mod_metrics)
+            # Use the layout option from the radio buttons.
+            layout = self.quant_layout_option.get() if hasattr(self, "quant_layout_option") else "2x3"
+            if layout == "2x3":
+                self.plot_quantification_results_combined(single_fit_times, single_area_metrics, single_mod_metrics,
+                                                          double_fit_times, double_area_metrics, double_mod_metrics,
+                                                          split_fit_times, split_area_metrics, split_mod_metrics)
+            elif layout == "1x3":
+                self.plot_quantification_results_1x3(single_fit_times, single_area_metrics, single_mod_metrics,
+                                                     double_fit_times, double_area_metrics, double_mod_metrics,
+                                                     split_fit_times, split_area_metrics, split_mod_metrics)
+            elif layout == "2x2":
+                self.plot_quantification_results_2x2(single_fit_times, single_area_metrics, single_mod_metrics,
+                                                     double_fit_times, double_area_metrics, double_mod_metrics,
+                                                     split_fit_times, split_area_metrics, split_mod_metrics)
+            else:
+                messagebox.showerror("Error", "Invalid layout option selected.")
         else:
-            # Otherwise, plot only one set based on the "Use Modified Peak Metric" option.
+            # Otherwise, use only one metric set.
             if self.use_modified_metric.get():
                 self.plot_quantification_results_side_by_side(single_fit_times, single_mod_metrics,
                                                               double_fit_times, double_mod_metrics,
@@ -1736,164 +1875,231 @@ class PLAnalysisApp:
         canvas.get_tk_widget().pack()
 
     def plot_spectra(self, ax):
-        colors = plt.cm.viridis(np.linspace(0, 1, len(self.time_checkboxes)))
-
-        if self.raw_counts is None or self.wavelength is None or self.relative_times is None or self.contains_counts_flag == False:
+        if self.raw_counts is None or self.wavelength is None or self.relative_times is None or not self.contains_counts_flag:
             ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
             ax.set_title("Raw PL Spectra")
             return
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
-        colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
+        n_curves = len(selected_indices)
         if self.is_single_measurement_flag:
             ax.plot(self.wavelength, self.raw_counts[:, 0], color="blue", label="Data")
         else:
-            for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"{self.relative_times[i]}")
-
-        if self.show_legend_var.get():
-            ax.legend()
+            if n_curves > 8:
+                # Use colorbar-based continuous colormap.
+                times = [parse_time(self.relative_times[i]) for i in selected_indices]
+                vmin, vmax = min(times), max(times)
+                norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+                cmap = mpl.cm.viridis
+                for i, t in zip(selected_indices, times):
+                    color = cmap(norm(t))
+                    ax.plot(self.wavelength, self.raw_counts[:, i], color=color)
+                sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+                sm.set_array([])
+                cbar = plt.colorbar(sm, ax=ax)
+                cbar.set_label("Time (s)")
+            else:
+                colors = plt.cm.viridis(np.linspace(0, 1, n_curves))
+                for idx, i in enumerate(selected_indices):
+                    ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=self.relative_times[i])
+                ax.legend(fontsize=12)
         ax.set_xlabel("Wavelength (nm)")
         ax.set_ylabel("Counts")
         ax.set_title("Raw PL Spectra")
 
     def plot_luminescence_flux_density(self, ax):
-        colors = plt.cm.viridis(np.linspace(0, 1, len(self.time_checkboxes)))
-
-        if self.luminescence_flux_density is None or self.wavelength is None or self.relative_times is None or self.contains_flux_flag == False:
+        if self.luminescence_flux_density is None or self.wavelength is None or self.relative_times is None or not self.contains_flux_flag:
             ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
             ax.set_title("Luminescence Flux Density")
             return
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
-        colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
+        n_curves = len(selected_indices)
         if self.is_single_measurement_flag:
             ax.plot(self.wavelength, self.luminescence_flux_density[:, 0], color="green", label="Data")
         else:
-            for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"{self.relative_times[i]}")
-
-        if self.show_legend_var.get():
-            ax.legend()
+            if n_curves > 8:
+                times = [parse_time(self.relative_times[i]) for i in selected_indices]
+                vmin, vmax = min(times), max(times)
+                norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+                cmap = mpl.cm.viridis
+                for i, t in zip(selected_indices, times):
+                    color = cmap(norm(t))
+                    ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=color)
+                sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+                sm.set_array([])
+                cbar = plt.colorbar(sm, ax=ax)
+                cbar.set_label("Time (s)")
+            else:
+                colors = plt.cm.viridis(np.linspace(0, 1, n_curves))
+                for idx, i in enumerate(selected_indices):
+                    ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx],
+                            label=self.relative_times[i])
+                ax.legend(fontsize=12)
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Flux Density (photons/s/cm²/nm))")
+        ax.set_ylabel("Flux Density (photons/s/cm²/nm)")
         ax.set_title("Luminescence Flux Density")
 
     def plot_log_luminescence_flux_density(self, ax):
-        colors = plt.cm.viridis(np.linspace(0, 1, len(self.time_checkboxes)))
-
-        if self.luminescence_flux_density is None or self.wavelength is None or self.relative_times is None or self.contains_flux_flag == False:
+        if self.luminescence_flux_density is None or self.wavelength is None or self.relative_times is None or not self.contains_flux_flag:
             ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
             ax.set_title("Luminescence Flux Density (log)")
             return
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
-        colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
+        n_curves = len(selected_indices)
         if self.is_single_measurement_flag:
             ax.plot(self.wavelength, self.luminescence_flux_density[:, 0], color="green", label="Data")
         else:
-            for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx], label=f"{self.relative_times[i]}")
-
-        if self.show_legend_var.get():
-            ax.legend()
+            if n_curves > 8:
+                times = [parse_time(self.relative_times[i]) for i in selected_indices]
+                vmin, vmax = min(times), max(times)
+                norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+                cmap = mpl.cm.viridis
+                for i, t in zip(selected_indices, times):
+                    color = cmap(norm(t))
+                    ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=color)
+                sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+                sm.set_array([])
+                cbar = plt.colorbar(sm, ax=ax)
+                cbar.set_label("Time (s)")
+            else:
+                colors = plt.cm.viridis(np.linspace(0, 1, n_curves))
+                for idx, i in enumerate(selected_indices):
+                    ax.plot(self.wavelength, self.luminescence_flux_density[:, i], color=colors[idx],
+                            label=self.relative_times[i])
+                ax.legend(fontsize=12)
         ax.set_yscale('log')
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Flux Density (photons/s/cm²/nm))")
+        ax.set_ylabel("Flux Density (photons/s/cm²/nm)")
         ax.set_title("Luminescence Flux Density (log)")
 
     def plot_norm_luminescence_flux_density(self, ax):
-        colors = plt.cm.viridis(np.linspace(0, 1, len(self.time_checkboxes)))
-
-        if self.luminescence_flux_density is None or self.wavelength is None or self.relative_times is None or self.contains_flux_flag == False:
+        if self.luminescence_flux_density is None or self.wavelength is None or self.relative_times is None or not self.contains_flux_flag:
             ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
             ax.set_title("Normalized Luminescence Flux Density")
             return
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
-        colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
+        n_curves = len(selected_indices)
+        global_max = self.luminescence_flux_density.max()
         if self.is_single_measurement_flag:
-            ax.plot(self.wavelength, self.luminescence_flux_density[:, 0]/self.luminescence_flux_density[:, 0].max(), color="green", label="Data")
+            norm_data = self.luminescence_flux_density[:, 0] / self.luminescence_flux_density[:, 0].max()
+            ax.plot(self.wavelength, norm_data, color="green", label="Data")
         else:
-            for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.luminescence_flux_density[:, i]/self.luminescence_flux_density.max(), color=colors[idx], label=f"{self.relative_times[i]}")
-
-        if self.show_legend_var.get():
-            ax.legend()
+            if n_curves > 8:
+                times = [parse_time(self.relative_times[i]) for i in selected_indices]
+                vmin, vmax = min(times), max(times)
+                norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+                cmap = mpl.cm.viridis
+                for i, t in zip(selected_indices, times):
+                    color = cmap(norm(t))
+                    data = self.luminescence_flux_density[:, i] / global_max
+                    ax.plot(self.wavelength, data, color=color)
+                sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+                sm.set_array([])
+                cbar = plt.colorbar(sm, ax=ax)
+                cbar.set_label("Time (s)")
+            else:
+                colors = plt.cm.viridis(np.linspace(0, 1, n_curves))
+                for idx, i in enumerate(selected_indices):
+                    data = self.luminescence_flux_density[:, i] / global_max
+                    ax.plot(self.wavelength, data, color=colors[idx], label=self.relative_times[i])
+                ax.legend(fontsize=12)
         ax.set_xlabel("Wavelength (nm)")
         ax.set_ylabel("Normalized Flux Density (a. u.)")
         ax.set_title("Normalized Luminescence Flux Density")
 
     def plot_log_spectra(self, ax):
-        colors = plt.cm.viridis(np.linspace(0, 1, len(self.time_checkboxes)))
-
-        if self.raw_counts is None or self.wavelength is None or self.relative_times is None or self.contains_counts_flag == False:
+        if self.raw_counts is None or self.wavelength is None or self.relative_times is None or not self.contains_counts_flag:
             ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
             ax.set_title("Raw PL Spectra (log)")
             return
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
-        colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
+        n_curves = len(selected_indices)
         if self.is_single_measurement_flag:
             ax.plot(self.wavelength, self.raw_counts[:, 0], color="blue", label="Data")
         else:
-            for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=f"{self.relative_times[i]}")
-
-        if self.show_legend_var.get():
-            ax.legend()
+            if n_curves > 8:
+                times = [parse_time(self.relative_times[i]) for i in selected_indices]
+                vmin, vmax = min(times), max(times)
+                norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+                cmap = mpl.cm.viridis
+                for i, t in zip(selected_indices, times):
+                    color = cmap(norm(t))
+                    ax.plot(self.wavelength, self.raw_counts[:, i], color=color)
+                sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+                sm.set_array([])
+                cbar = plt.colorbar(sm, ax=ax)
+                cbar.set_label("Time (s)")
+            else:
+                colors = plt.cm.viridis(np.linspace(0, 1, n_curves))
+                for idx, i in enumerate(selected_indices):
+                    ax.plot(self.wavelength, self.raw_counts[:, i], color=colors[idx], label=self.relative_times[i])
+                ax.legend(fontsize=12)
         ax.set_yscale('log')
         ax.set_xlabel("Wavelength (nm)")
         ax.set_ylabel("Counts")
         ax.set_title("Raw PL Spectra (log)")
 
     def plot_norm_spectra(self, ax):
-        colors = plt.cm.viridis(np.linspace(0, 1, len(self.time_checkboxes)))
-        if self.raw_counts is None or self.wavelength is None or self.relative_times is None or self.contains_counts_flag == False:
+        if self.raw_counts is None or self.wavelength is None or self.relative_times is None or not self.contains_counts_flag:
             ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
             ax.set_title("Normalized Raw PL Spectra")
             return
 
         selected_indices = [i for var, i in self.time_checkboxes if var.get()]
-        colors = plt.cm.viridis(np.linspace(0, 1, len(selected_indices)))
+        n_curves = len(selected_indices)
+        global_max = self.raw_counts.max()
         if self.is_single_measurement_flag:
-            ax.plot(self.wavelength, self.raw_counts[:, 0]/self.raw_counts[:, 0].max(), color="blue", label="Data")
+            norm_data = self.raw_counts[:, 0] / self.raw_counts[:, 0].max()
+            ax.plot(self.wavelength, norm_data, color="blue", label="Data")
         else:
-            for idx, i in enumerate(selected_indices):
-                ax.plot(self.wavelength, self.raw_counts[:, i]/self.raw_counts.max(), color=colors[idx], label=f"{self.relative_times[i]}")
-
-        if self.show_legend_var.get():
-            ax.legend()
+            if n_curves > 8:
+                times = [parse_time(self.relative_times[i]) for i in selected_indices]
+                vmin, vmax = min(times), max(times)
+                norm_color = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+                cmap = mpl.cm.viridis
+                for i, t in zip(selected_indices, times):
+                    color = cmap(norm_color(t))
+                    norm_data = self.raw_counts[:, i] / global_max
+                    ax.plot(self.wavelength, norm_data, color=color)
+                sm = mpl.cm.ScalarMappable(norm=norm_color, cmap=cmap)
+                sm.set_array([])
+                cbar = plt.colorbar(sm, ax=ax)
+                cbar.set_label("Time (s)")
+            else:
+                colors = plt.cm.viridis(np.linspace(0, 1, n_curves))
+                for idx, i in enumerate(selected_indices):
+                    norm_data = self.raw_counts[:, i] / global_max
+                    ax.plot(self.wavelength, norm_data, color=colors[idx], label=self.relative_times[i])
+                ax.legend(fontsize=12)
         ax.set_xlabel("Wavelength (nm)")
         ax.set_ylabel("Normalized Intensity (a. u.)")
         ax.set_title("Normalized Raw PL Spectra")
 
     def plot_absolute_gradient(self, ax):
+        # For gradient plots, we assume one curve (the mean gradient over time) is computed.
         if self.is_single_measurement_flag:
             ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
             ax.set_title("Absolute Gradient")
             ax.set_xlabel("Wavelength (nm)")
             ax.set_ylabel("Gradient Value")
         else:
-            if self.contains_counts_flag:
-                data = self.raw_counts
-            elif self.contains_flux_flag:
-                data = self.luminescence_flux_density
-            else:
+            data = self.raw_counts if self.contains_counts_flag else self.luminescence_flux_density
+            if data is None:
                 ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
                 ax.set_title("Absolute Gradient")
-                ax.set_xlabel("Wavelength (nm)")
-                ax.set_ylabel("Gradient Value")
                 return
-
             gradient = np.gradient(data, axis=0)
             mean_gradient = np.mean(np.abs(gradient), axis=1)
             ax.plot(self.wavelength, mean_gradient, color="blue", label="Absolute Gradient")
-            ax.set_title("Absolute Gradient")
             ax.set_xlabel("Wavelength (nm)")
             ax.set_ylabel("Gradient Value")
+            ax.set_title("Absolute Gradient")
             if self.show_legend_var.get():
-                ax.legend()
+                ax.legend(fontsize=12)
 
     def plot_log_absolute_gradient(self, ax):
         if self.is_single_measurement_flag:
@@ -1902,27 +2108,20 @@ class PLAnalysisApp:
             ax.set_xlabel("Wavelength (nm)")
             ax.set_ylabel("Gradient Value (log)")
             return
-
-        if self.contains_counts_flag:
-            data = self.raw_counts
-        elif self.contains_flux_flag:
-            data = self.luminescence_flux_density
-        else:
+        data = self.raw_counts if self.contains_counts_flag else self.luminescence_flux_density
+        if data is None:
             ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
             ax.set_title("Log Absolute Gradient")
-            ax.set_xlabel("Wavelength (nm)")
-            ax.set_ylabel("Gradient Value (log)")
             return
-
         gradient = np.gradient(data, axis=0)
         mean_gradient = np.mean(np.abs(gradient), axis=1)
         ax.plot(self.wavelength, mean_gradient, color="blue", label="Absolute Gradient")
-        ax.set_title("Log Absolute Gradient")
+        ax.set_yscale('log')
         ax.set_xlabel("Wavelength (nm)")
         ax.set_ylabel("Gradient Value (log)")
-        ax.set_yscale('log')
+        ax.set_title("Log Absolute Gradient")
         if self.show_legend_var.get():
-            ax.legend()
+            ax.legend(fontsize=12)
 
     def plot_norm_absolute_gradient(self, ax):
         if self.is_single_measurement_flag:
@@ -1931,26 +2130,20 @@ class PLAnalysisApp:
             ax.set_xlabel("Wavelength (nm)")
             ax.set_ylabel("Normalized Gradient (a. u.)")
             return
-
-        if self.contains_counts_flag:
-            data = self.raw_counts
-        elif self.contains_flux_flag:
-            data = self.luminescence_flux_density
-        else:
+        data = self.raw_counts if self.contains_counts_flag else self.luminescence_flux_density
+        if data is None:
             ax.text(0.5, 0.5, "No Data to Plot", ha='center', va='center', transform=ax.transAxes)
             ax.set_title("Normalized Absolute Gradient")
-            ax.set_xlabel("Wavelength (nm)")
-            ax.set_ylabel("Normalized Gradient (a. u.)")
             return
-
         gradient = np.gradient(data, axis=0)
         mean_gradient = np.mean(np.abs(gradient), axis=1)
-        ax.plot(self.wavelength, mean_gradient/mean_gradient.max(), color="blue", label="Absolute Gradient")
-        ax.set_title("Normalzied Absolute Gradient")
+        norm_grad = mean_gradient / np.max(mean_gradient) if np.max(mean_gradient) != 0 else mean_gradient
+        ax.plot(self.wavelength, norm_grad, color="blue", label="Absolute Gradient")
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Gradient Value")
+        ax.set_ylabel("Normalized Gradient (a. u.)")
+        ax.set_title("Normalized Absolute Gradient")
         if self.show_legend_var.get():
-            ax.legend()
+            ax.legend(fontsize=12)
 
     def update_raw_plot(self):
         self.plot_in_window()
