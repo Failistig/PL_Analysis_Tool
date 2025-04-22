@@ -176,6 +176,9 @@ class PLAnalysisApp:
         self.double_sigma2 = StringVar(value="3")
         self.combine_metric_plots = IntVar(value=1)
         self.layout_2x2_option = IntVar(value=0)
+        self.fit_tol = StringVar(value="30")
+        self.fit_tol1 = StringVar(value="30")
+        self.fit_tol2 = StringVar(value="30")
 
         # Save options
         self.save_raw_var = IntVar(value=1)
@@ -337,6 +340,9 @@ class PLAnalysisApp:
         Label(quant_window, text="Sigma:").grid(row=4, column=6, sticky="w")
         sigma_entry = Entry(quant_window, textvariable=self.single_sigma, width=10)
         sigma_entry.grid(row=4, column=7, sticky="w", padx=5)
+        Label(quant_window, text="Tolerance:").grid(row=4, column=8, sticky="w")
+        tol_entry = Entry(quant_window, textvariable=self.fit_tol, width=10)
+        tol_entry.grid(row=4, column=9, sticky="w", padx=5)
 
         # --- Initial Guesses for Double Peak (Used for Double, Split & Multi Fits) ---
         Label(quant_window, text="Initial Guesses: Double Peak", font=("Arial", 12)).grid(row=5, column=0,
@@ -351,6 +357,9 @@ class PLAnalysisApp:
         Label(quant_window, text="Sigma1:").grid(row=5, column=6, sticky="w")
         sigma1_entry = Entry(quant_window, textvariable=self.double_sigma1, width=10)
         sigma1_entry.grid(row=5, column=7, sticky="w", padx=5)
+        Label(quant_window, text="Tolerance:").grid(row=5, column=8, sticky="w")
+        tol1_entry = Entry(quant_window, textvariable=self.fit_tol1, width=10)
+        tol1_entry.grid(row=5, column=9, sticky="w", padx=5)
 
         Label(quant_window, text="Amp2:").grid(row=6, column=2, sticky="w")
         amp2_entry = Entry(quant_window, textvariable=self.double_a2, width=10)
@@ -361,6 +370,9 @@ class PLAnalysisApp:
         Label(quant_window, text="Sigma2:").grid(row=6, column=6, sticky="w")
         sigma2_entry = Entry(quant_window, textvariable=self.double_sigma2, width=10)
         sigma2_entry.grid(row=6, column=7, sticky="w", padx=5)
+        Label(quant_window, text="Tolerance:").grid(row=6, column=8, sticky="w")
+        tol2_entry = Entry(quant_window, textvariable=self.fit_tol2, width=10)
+        tol2_entry.grid(row=6, column=9, sticky="w", padx=5)
 
         # --- Normalization Option & Buttons ---
         Checkbutton(quant_window, text="Normalize Single Fit Area", variable=self.normalize_fit_var).grid(row=8,
@@ -699,12 +711,39 @@ class PLAnalysisApp:
                 mu_guess = float(self.single_mu.get()) if self.single_mu.get() else (x_fit[0] + x_fit[-1]) / 2
                 sigma_guess = float(self.single_sigma.get()) if self.single_sigma.get() else (x_fit[-1] - x_fit[0]) / 4
                 p0 = [amp_guess, mu_guess, sigma_guess]
-                popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0, maxfev=int(self.maxfev.get()))
+                # --- assume you have already computed:
+                # x_fit, y_fit
+                # p0 = [A_guess, mu_guess, sigma_guess]
+                tol = float(self.fit_tol.get())  # tolerance in wavelength units
+
+                # Build bounds for [A, μ, σ]
+                lower = [
+                    0.0,  # A ≥ 0
+                    p0[1] - tol,  # μ ≥ μ₀ − tol
+                    1e-6  # σ > 0
+                ]
+                upper = [
+                    np.inf,  # no upper on A
+                    p0[1] + tol,  # μ ≤ μ₀ + tol
+                    np.inf  # no upper on σ
+                ]
+
+                popt, _ = curve_fit(
+                    gaussian,
+                    x_fit,
+                    y_fit,
+                    p0=p0,
+                    bounds=(lower, upper),
+                    maxfev=int(self.maxfev.get())
+                )
+
+                # Then plot as before:
                 fitted_curve = gaussian(x_fit, *popt)
                 axs[plot_index].plot(x_data, y_data, "b.", label="Data")
                 axs[plot_index].plot(x_fit, fitted_curve, "r-", label="Single Gaussian")
                 axs[plot_index].set_title("Single Gaussian Fit")
                 axs[plot_index].legend()
+
             except Exception as e:
                 axs[plot_index].text(0.5, 0.5, f"Single fit failed:\n{e}", ha="center", va="center",
                                      transform=axs[plot_index].transAxes)
@@ -724,15 +763,46 @@ class PLAnalysisApp:
                     float(self.double_sigma1.get()) if self.double_sigma1.get() else (x_fit[-1] - x_fit[0]) / 8,
                     0.6, 20, 1.2
                 ]
-                bounds_constrained = ([0, x_fit[0], 0, 0, -np.inf, 0],
-                                      [np.inf, x_fit[-1], np.inf, 1, np.inf, np.inf])
-                popt, _ = curve_fit(double_gaussian, x_fit, y_fit, p0=p0_double,
-                                    bounds=bounds_constrained, method='dogbox', maxfev=int(self.maxfev.get()))
+                tol1 = float(self.fit_tol1.get())  # tolerance (nm) around mu1
+                tol2 = float(self.fit_tol2.get())  # tolerance (nm) around mu2 = mu1 + delta
+
+                # Build lower/upper bounds for each parameter in p0_double:
+                # Index:  0     1      2       3     4       5
+                # Param : A1,   mu1,  sigma1,   f,  delta,   r
+                lower = [
+                    0.0,  # A1 ≥ 0
+                    p0_double[1] - tol1,  # mu1 ≥ mu1₀ - tol1
+                    1e-6,  # sigma1 > 0
+                    0.0,  # f ≥ 0
+                    p0_double[4] - tol2,  # delta ≥ Δ₀ - tol2  (so μ2 = μ1+delta stays in window)
+                    1e-6  # r > 0
+                ]
+                upper = [
+                    np.inf,  # no upper on A1
+                    p0_double[1] + tol1,  # mu1 ≤ mu1₀ + tol1
+                    np.inf,  # no upper on sigma1
+                    1.0,  # f ≤ 1
+                    p0_double[4] + tol2,  # delta ≤ Δ₀ + tol2
+                    np.inf  # no upper on r
+                ]
+
+                # Now call curve_fit with these bounds:
+                popt, _ = curve_fit(
+                    double_gaussian,
+                    x_fit,
+                    y_fit,
+                    p0=p0_double,
+                    bounds=(lower, upper),
+                    method='dogbox',
+                    maxfev=int(self.maxfev.get())
+                )
+
                 fitted_curve = double_gaussian(x_fit, *popt)
                 axs[plot_index].plot(x_data, y_data, "b.", label="Data")
                 axs[plot_index].plot(x_fit, fitted_curve, "r-", label="Double Gaussian")
                 axs[plot_index].set_title("Double Gaussian Fit")
                 axs[plot_index].legend()
+
             except Exception as e:
                 axs[plot_index].text(0.5, 0.5, f"Double fit failed:\n{e}", ha="center", va="center",
                                      transform=axs[plot_index].transAxes)
@@ -845,7 +915,24 @@ class PLAnalysisApp:
                     sigma_guess = float(self.single_sigma.get()) if self.single_sigma.get() else (x_single[-1] -
                                                                                                   x_single[0]) / 4
                     p0 = [amp_guess, mu_guess, sigma_guess]
-                    popt, _ = curve_fit(gaussian, x_single, y_single, p0=p0, maxfev=int(self.maxfev.get()))
+                    # --- assume you have already computed:
+                    # x_fit, y_fit
+                    # p0 = [A_guess, mu_guess, sigma_guess]
+                    tol = float(self.fit_tol.get())  # tolerance in wavelength units
+
+                    # Build bounds for [A, μ, σ]
+                    lower = [
+                        0.0,  # A ≥ 0
+                        p0[1] - tol,  # μ ≥ μ₀ − tol
+                        1e-6  # σ > 0
+                    ]
+                    upper = [
+                        np.inf,  # no upper on A
+                        p0[1] + tol,  # μ ≤ μ₀ + tol
+                        np.inf  # no upper on σ
+                    ]
+
+                    popt, _ = curve_fit(gaussian, x_single, y_single, p0=p0, bounds=(lower, upper), maxfev=int(self.maxfev.get()))
                     area_metric = popt[0] * popt[2] * np.sqrt(2 * np.pi)
                     mod_metric = popt[0] / popt[2] if popt[2] != 0 else np.nan
                     single_area_metrics.append(area_metric)
@@ -866,10 +953,31 @@ class PLAnalysisApp:
                             0]) / 8,
                         0.6, 20, 1.2
                     ]
-                    bounds_constrained = ([0, x_double[0], 0, 0, -np.inf, 0],
-                                          [np.inf, x_double[-1], np.inf, 1, np.inf, np.inf])
+                    tol1 = float(self.fit_tol1.get())  # tolerance (nm) around mu1
+                    tol2 = float(self.fit_tol2.get())  # tolerance (nm) around mu2 = mu1 + delta
+
+                    # Build lower/upper bounds for each parameter in p0_double:
+                    # Index:  0     1      2       3     4       5
+                    # Param : A1,   mu1,  sigma1,   f,  delta,   r
+                    lower = [
+                        0.0,  # A1 ≥ 0
+                        p0_double[1] - tol1,  # mu1 ≥ mu1₀ - tol1
+                        1e-6,  # sigma1 > 0
+                        0.0,  # f ≥ 0
+                        p0_double[4] - tol2,  # delta ≥ Δ₀ - tol2  (so μ2 = μ1+delta stays in window)
+                        1e-6  # r > 0
+                    ]
+                    upper = [
+                        np.inf,  # no upper on A1
+                        p0_double[1] + tol1,  # mu1 ≤ mu1₀ + tol1
+                        np.inf,  # no upper on sigma1
+                        1.0,  # f ≤ 1
+                        p0_double[4] + tol2,  # delta ≤ Δ₀ + tol2
+                        np.inf  # no upper on r
+                    ]
+
                     popt, _ = curve_fit(double_gaussian, x_double, y_double, p0=p0_double,
-                                        bounds=bounds_constrained, method='dogbox', maxfev=int(self.maxfev.get()))
+                                        bounds=(lower, upper), method='dogbox', maxfev=int(self.maxfev.get()))
                     area1 = popt[0] * popt[2] * np.sqrt(2 * np.pi)
                     area2 = (popt[0] * popt[3]) * (popt[2] * popt[5]) * np.sqrt(2 * np.pi)
                     area_ratio = area2 / area1 if area1 != 0 else np.nan
